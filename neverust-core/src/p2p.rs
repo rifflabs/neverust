@@ -1,13 +1,16 @@
 //! P2P networking layer using rust-libp2p
 //!
 //! Implements the core P2P stack with TCP transport, Noise encryption,
-//! Yamux multiplexing, and Ping + Identify behaviors.
+//! Mplex multiplexing, and Ping + Identify behaviors.
 
 use libp2p::{
-    gossipsub, identify, kad, noise, ping, tcp, yamux, PeerId, Swarm, SwarmBuilder,
+    noise, ping, tcp, PeerId, Swarm, SwarmBuilder,
 };
+use libp2p_mplex as mplex;
 use std::time::Duration;
 use thiserror::Error;
+
+use crate::blockexc::BlockExcBehaviour;
 
 #[derive(Error, Debug)]
 pub enum P2PError {
@@ -21,22 +24,18 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Combined network behavior with Ping, Identify, Kademlia, and Gossipsub protocols
+/// Network behavior with Ping and BlockExc protocols
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub ping: ping::Behaviour,
-    pub identify: identify::Behaviour,
-    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
-    pub gossipsub: gossipsub::Behaviour,
+    pub blockexc: BlockExcBehaviour,
 }
 
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Ping(ping::Event),
-    Identify(identify::Event),
-    Kademlia(kad::Event),
-    Gossipsub(gossipsub::Event),
+    BlockExc(()),
 }
 
 impl From<ping::Event> for BehaviourEvent {
@@ -45,21 +44,9 @@ impl From<ping::Event> for BehaviourEvent {
     }
 }
 
-impl From<identify::Event> for BehaviourEvent {
-    fn from(event: identify::Event) -> Self {
-        BehaviourEvent::Identify(event)
-    }
-}
-
-impl From<kad::Event> for BehaviourEvent {
-    fn from(event: kad::Event) -> Self {
-        BehaviourEvent::Kademlia(event)
-    }
-}
-
-impl From<gossipsub::Event> for BehaviourEvent {
-    fn from(event: gossipsub::Event) -> Self {
-        BehaviourEvent::Gossipsub(event)
+impl From<()> for BehaviourEvent {
+    fn from(_: ()) -> Self {
+        BehaviourEvent::BlockExc(())
     }
 }
 
@@ -71,42 +58,20 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
 
     tracing::info!("Local peer ID: {}", peer_id);
 
-    // Create Kademlia with in-memory store
-    let store = kad::store::MemoryStore::new(peer_id);
-    let kademlia = kad::Behaviour::new(peer_id, store);
-
-    // Create Gossipsub with message signing
-    let gossipsub_config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(10))
-        .validation_mode(gossipsub::ValidationMode::Strict)
-        .build()
-        .map_err(|e| P2PError::Swarm(format!("Gossipsub config error: {}", e)))?;
-
-    let gossipsub = gossipsub::Behaviour::new(
-        gossipsub::MessageAuthenticity::Signed(keypair.clone()),
-        gossipsub_config,
-    )
-    .map_err(|e| P2PError::Swarm(format!("Gossipsub creation error: {}", e)))?;
-
-    // Create behaviors
+    // Create behaviors: Ping for keep-alive and BlockExc for block exchange
     let behaviour = Behaviour {
         ping: ping::Behaviour::new(ping::Config::new()),
-        identify: identify::Behaviour::new(identify::Config::new(
-            "/archivist/1.0.0".to_string(),
-            keypair.public(),
-        )),
-        kademlia,
-        gossipsub,
+        blockexc: BlockExcBehaviour,
     };
 
-    // Build swarm with TCP transport, Noise security, and Yamux multiplexing
+    // Build swarm with TCP transport, Noise security, and Mplex multiplexing
     // (matching Archivist's configuration)
     let swarm = SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(
             tcp::Config::default().nodelay(true).port_reuse(true),
             noise::Config::new,
-            yamux::Config::default,
+            mplex::MplexConfig::default,
         )
         .map_err(|e| P2PError::Transport(e.to_string()))?
         .with_behaviour(|_| behaviour)

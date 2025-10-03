@@ -2,6 +2,7 @@
 //!
 //! Core P2P networking and storage functionality for the Archivist node.
 
+pub mod blockexc;
 pub mod config;
 pub mod p2p;
 pub mod runtime;
