@@ -41,13 +41,28 @@ pub enum SprError {
     InvalidMultiaddr(String),
 }
 
-/// PeerInfo protobuf message
+/// Archivist's SPR format (actual structure from testnet)
+#[derive(Clone, PartialEq, Message)]
+struct ArchivistSpr {
+    #[prost(bytes = "vec", optional, tag = "1")]
+    peer_id: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "2")]
+    seq_bytes: Option<Vec<u8>>,  // 2 bytes
+    #[prost(bytes = "vec", repeated, tag = "3")]  // Contains nested PeerInfo protobuf
+    peer_record: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", repeated, tag = "5")]  // Signature (DER format)
+    signature: Vec<Vec<u8>>,
+}
+
+/// Nested PeerRecord inside field 3 (libp2p PeerRecord format)
 #[derive(Clone, PartialEq, Message)]
 struct PeerInfo {
-    #[prost(bytes = "vec", tag = "1")]
-    peer_id: Vec<u8>,
-    #[prost(bytes = "vec", repeated, tag = "2")]
-    multiaddrs: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "1")]
+    peer_id: Option<Vec<u8>>,
+    #[prost(uint64, tag = "2")]
+    seq: u64,
+    #[prost(bytes = "vec", repeated, tag = "3")]  // Multiaddrs are in field 3!
+    addrs: Vec<Vec<u8>>,
 }
 
 /// Parse SPR records from testnet endpoint response
@@ -75,22 +90,48 @@ pub fn parse_spr_records(spr_text: &str) -> Result<Vec<(PeerId, Vec<Multiaddr>)>
 /// Parse a single base64-encoded SPR record
 fn parse_single_spr(spr_base64: &str) -> Result<(PeerId, Vec<Multiaddr>), SprError> {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-    use libp2p::core::{SignedEnvelope, PeerRecord};
+    use libp2p::identity::PublicKey;
 
     // Decode URL-safe base64 (SPR records use URL-safe encoding)
     let bytes = URL_SAFE_NO_PAD.decode(spr_base64)?;
 
-    // Decode SignedEnvelope from protobuf
-    let signed_envelope = SignedEnvelope::from_protobuf_encoding(&bytes)
-        .map_err(|e| SprError::Protobuf(prost::DecodeError::new(e.to_string())))?;
+    // Decode ArchivistSpr protobuf
+    let spr = ArchivistSpr::decode(&bytes[..])?;
 
-    // Try to decode PeerRecord from SignedEnvelope
-    let peer_record = PeerRecord::from_signed_envelope(signed_envelope)
+    // Extract peer_id bytes
+    let peer_id_bytes = spr.peer_id
+        .ok_or_else(|| SprError::Protobuf(prost::DecodeError::new("Missing peer_id")))?;
+
+    // The peer_id field contains a PublicKey protobuf (not raw peer ID bytes)
+    let public_key = PublicKey::try_decode_protobuf(&peer_id_bytes)
         .map_err(|e| SprError::InvalidPeerId(e.to_string()))?;
 
-    // Extract peer ID and addresses
-    let peer_id = peer_record.peer_id();
-    let addrs = peer_record.addresses().to_vec();
+    // Derive PeerId from public key
+    let peer_id = public_key.to_peer_id();
+
+    // Field 3 contains nested PeerInfo protobuf with multiaddrs
+    let mut addrs = Vec::new();
+    for peer_record_bytes in &spr.peer_record {
+        if let Ok(peer_info) = PeerInfo::decode(&peer_record_bytes[..]) {
+            for addr_bytes in peer_info.addrs {
+                // The addr_bytes are wrapped in a protobuf message with field 1
+                // Try decoding as nested protobuf first
+                #[derive(Clone, PartialEq, Message)]
+                struct AddrWrapper {
+                    #[prost(bytes = "vec", optional, tag = "1")]
+                    addr: Option<Vec<u8>>,
+                }
+
+                if let Ok(wrapper) = AddrWrapper::decode(&addr_bytes[..]) {
+                    if let Some(raw_addr) = wrapper.addr {
+                        if let Ok(addr) = Multiaddr::try_from(raw_addr) {
+                            addrs.push(addr);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Ok((peer_id, addrs))
 }
@@ -98,50 +139,85 @@ fn parse_single_spr(spr_base64: &str) -> Result<(PeerId, Vec<Multiaddr>), SprErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-
-    #[test]
-    fn test_inspect_spr_as_envelope() {
-        use libp2p::core::SignedEnvelope;
-
-        let spr_text = "spr:CiUIAhIhA5mg11LZgFQ4XzIRb1T5xw9muFW1ALNKTijyKhQmvKYXEgIDARpJCicAJQgCEiEDmaDXUtmAVDhfMhFvVPnHD2a4VbUAs0pOKPIqFCa8phcQl-XFxQYaCwoJBE4vqKqRAnU6GgsKCQROL6iqkQJ1OipHMEUCIQDfzVYbN6A_O4i29e_FtDDUo7GJS3bkXRQtoteYbPSFtgIgcc8Kgj2ggVJyK16EY9xi4bY2lpTTeNIRjvslXSRdN5w";
-
-        if let Some(spr_data) = spr_text.strip_prefix("spr:") {
-            let bytes = URL_SAFE_NO_PAD.decode(spr_data).unwrap();
-
-            // Try to decode as SignedEnvelope
-            match SignedEnvelope::from_protobuf_encoding(&bytes) {
-                Ok(envelope) => {
-                    println!("SignedEnvelope decoded successfully!");
-                    println!("Payload type: {}", envelope.payload_type());
-                    println!("Payload len: {} bytes", envelope.payload().len());
-                    println!("Payload hex: {}", hex::encode(envelope.payload()));
-                }
-                Err(e) => {
-                    println!("SignedEnvelope decode failed: {}", e);
-                }
-            }
-        }
-    }
 
     #[test]
     fn test_parse_spr_records() {
         // Real SPR from Archivist testnet
         let spr_text = "spr:CiUIAhIhA5mg11LZgFQ4XzIRb1T5xw9muFW1ALNKTijyKhQmvKYXEgIDARpJCicAJQgCEiEDmaDXUtmAVDhfMhFvVPnHD2a4VbUAs0pOKPIqFCa8phcQl-XFxQYaCwoJBE4vqKqRAnU6GgsKCQROL6iqkQJ1OipHMEUCIQDfzVYbN6A_O4i29e_FtDDUo7GJS3bkXRQtoteYbPSFtgIgcc8Kgj2ggVJyK16EY9xi4bY2lpTTeNIRjvslXSRdN5w";
 
-        // Try parsing and print any error
-        if let Some(spr_data) = spr_text.strip_prefix("spr:") {
-            match parse_single_spr(spr_data) {
-                Ok((peer_id, addrs)) => {
-                    println!("Success! Peer: {}, Addrs: {:?}", peer_id, addrs);
-                    assert!(addrs.len() > 0);
+        match parse_spr_records(spr_text) {
+            Ok(records) => {
+                println!("Parsed {} records", records.len());
+                if records.is_empty() {
+                    panic!("No records parsed - check parse_spr_records logic");
                 }
-                Err(e) => {
-                    panic!("Failed to parse SPR: {}", e);
+                assert_eq!(records.len(), 1);
+                let (peer_id, addrs) = &records[0];
+                println!("Parsed SPR successfully!");
+                println!("  Peer ID: {}", peer_id);
+                println!("  Addresses: {:?}", addrs);
+                assert!(addrs.len() > 0, "Should have at least one address");
+            }
+            Err(e) => {
+                panic!("Failed to parse SPR: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_single_spr_direct() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+        let spr_data = "CiUIAhIhA5mg11LZgFQ4XzIRb1T5xw9muFW1ALNKTijyKhQmvKYXEgIDARpJCicAJQgCEiEDmaDXUtmAVDhfMhFvVPnHD2a4VbUAs0pOKPIqFCa8phcQl-XFxQYaCwoJBE4vqKqRAnU6GgsKCQROL6iqkQJ1OipHMEUCIQDfzVYbN6A_O4i29e_FtDDUo7GJS3bkXRQtoteYbPSFtgIgcc8Kgj2ggVJyK16EY9xi4bY2lpTTeNIRjvslXSRdN5w";
+
+        let bytes = URL_SAFE_NO_PAD.decode(spr_data).unwrap();
+        println!("Decoded {} bytes", bytes.len());
+
+        // Try decoding as ArchivistSpr
+        match ArchivistSpr::decode(&bytes[..]) {
+            Ok(spr) => {
+                println!("ArchivistSpr decoded!");
+                if let Some(peer_id) = &spr.peer_id {
+                    println!("  peer_id (field 1): {} bytes", peer_id.len());
+                }
+                if let Some(seq) = &spr.seq_bytes {
+                    println!("  seq_bytes (field 2): {} bytes - {}", seq.len(), hex::encode(seq));
+                }
+                println!("  peer_record (field 3) count: {}", spr.peer_record.len());
+                for (i, rec) in spr.peer_record.iter().enumerate() {
+                    println!("    peer_record[{}]: {} bytes - full hex: {}", i, rec.len(), hex::encode(rec));
+                    match PeerInfo::decode(&rec[..]) {
+                        Ok(peer_info) => {
+                            println!("      -> PeerInfo decoded: {} addrs", peer_info.addrs.len());
+                            for (j, addr) in peer_info.addrs.iter().enumerate() {
+                                println!("         addr[{}]: {} bytes - {}", j, addr.len(), hex::encode(&addr[..addr.len().min(20)]));
+                            }
+                        }
+                        Err(e) => {
+                            println!("      -> PeerInfo decode FAILED: {}", e);
+                        }
+                    }
+                }
+                println!("  signature (field 5) count: {}", spr.signature.len());
+                for (i, sig) in spr.signature.iter().enumerate() {
+                    println!("    signature[{}]: {} bytes", i, sig.len());
                 }
             }
-        } else {
-            panic!("No spr: prefix found");
+            Err(e) => {
+                panic!("ArchivistSpr decode failed: {}", e);
+            }
+        }
+
+        match parse_single_spr(spr_data) {
+            Ok((peer_id, addrs)) => {
+                println!("\nFull parse successful!");
+                println!("  Peer ID: {}", peer_id);
+                println!("  Addresses: {:?}", addrs);
+                assert!(addrs.len() > 0, "Should have at least one address");
+            }
+            Err(e) => {
+                panic!("parse_single_spr failed: {}", e);
+            }
         }
     }
 }

@@ -97,14 +97,31 @@ impl Config {
 
     /// Fetch bootstrap nodes from Archivist testnet
     pub async fn fetch_testnet_bootstrap_nodes() -> Result<Vec<String>, ConfigError> {
-        // TODO: Fetch and parse SPR from https://spr.archivist.storage/testnet
-        // For now, using multiaddr format for testnet bootstrap
-        // This is a converted multiaddr from the SPR record
-        Ok(vec![
-            // Archivist testnet bootstrap - converted from SPR
-            // Original SPR: CiUIAhIhA5mg11LZgFQ4XzIRb1T5xw9muFW1ALNKTijyKhQmvKYXEgIDARpJ...
-            "/ip4/78.47.170.170/tcp/8070/p2p/12D3KooWMbDVa4e9TSnvDNmb7dVhG3r3VCVnfEqbf2QVhZWrG5yq".to_string(),
-        ])
+        use crate::spr::parse_spr_records;
+
+        // Fetch SPR records from testnet
+        let response = reqwest::get("https://spr.archivist.storage/testnet")
+            .await
+            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+            .text()
+            .await
+            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+        // Parse SPR records
+        let records = parse_spr_records(&response)
+            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
+
+        // Convert to multiaddr strings with peer IDs
+        let mut multiaddrs = Vec::new();
+        for (peer_id, addrs) in records {
+            for addr in addrs {
+                // Add peer ID to multiaddr
+                let full_addr = format!("{}/p2p/{}", addr, peer_id);
+                multiaddrs.push(full_addr);
+            }
+        }
+
+        Ok(multiaddrs)
     }
 }
 

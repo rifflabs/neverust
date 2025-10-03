@@ -16,18 +16,27 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Create swarm
     let mut swarm = create_swarm().await?;
 
-    // Start listening on configured port
-    let listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.listen_port)
+    // Start listening on TCP
+    let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.listen_port)
         .parse()
-        .map_err(|e| P2PError::Transport(format!("Invalid listen address: {}", e)))?;
+        .map_err(|e| P2PError::Transport(format!("Invalid TCP address: {}", e)))?;
 
     swarm
-        .listen_on(listen_addr)
-        .map_err(|e| P2PError::Transport(format!("Failed to listen: {}", e)))?;
+        .listen_on(tcp_addr)
+        .map_err(|e| P2PError::Transport(format!("Failed to listen on TCP: {}", e)))?;
+
+    // Also listen on QUIC (using disc_port)
+    let quic_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", config.disc_port)
+        .parse()
+        .map_err(|e| P2PError::Transport(format!("Invalid QUIC address: {}", e)))?;
+
+    swarm
+        .listen_on(quic_addr)
+        .map_err(|e| P2PError::Transport(format!("Failed to listen on QUIC: {}", e)))?;
 
     info!("Node started with peer ID: {}", swarm.local_peer_id());
     info!("Listening on TCP port {}", config.listen_port);
-    info!("Discovery on UDP port {}", config.disc_port);
+    info!("Listening on QUIC port {}", config.disc_port);
 
     // Add bootstrap nodes to Kademlia
     let bootstrap_addrs = if config.bootstrap_nodes.is_empty() {
