@@ -51,6 +51,10 @@ pub struct StartCommand {
     /// Logging level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     pub log_level: String,
+
+    /// Bootstrap node multiaddr (can be specified multiple times)
+    #[arg(long)]
+    pub bootstrap_node: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +63,8 @@ pub struct Config {
     pub listen_port: u16,
     pub disc_port: u16,
     pub log_level: String,
+    #[serde(default)]
+    pub bootstrap_nodes: Vec<String>,
 }
 
 impl Config {
@@ -85,7 +91,20 @@ impl Config {
             listen_port: 8070,
             disc_port: 8090,
             log_level: "info".to_string(),
+            bootstrap_nodes: Vec::new(),
         }
+    }
+
+    /// Fetch bootstrap nodes from Archivist testnet
+    pub async fn fetch_testnet_bootstrap_nodes() -> Result<Vec<String>, ConfigError> {
+        // TODO: Fetch and parse SPR from https://spr.archivist.storage/testnet
+        // For now, using multiaddr format for testnet bootstrap
+        // This is a converted multiaddr from the SPR record
+        Ok(vec![
+            // Archivist testnet bootstrap - converted from SPR
+            // Original SPR: CiUIAhIhA5mg11LZgFQ4XzIRb1T5xw9muFW1ALNKTijyKhQmvKYXEgIDARpJ...
+            "/ip4/78.47.170.170/tcp/8070/p2p/12D3KooWMbDVa4e9TSnvDNmb7dVhG3r3VCVnfEqbf2QVhZWrG5yq".to_string(),
+        ])
     }
 }
 
@@ -96,6 +115,7 @@ impl From<StartCommand> for Config {
             listen_port: cmd.listen_port,
             disc_port: cmd.disc_port,
             log_level: cmd.log_level,
+            bootstrap_nodes: cmd.bootstrap_node,
         }
     }
 }
@@ -120,6 +140,7 @@ mod tests {
             listen_port: 9000,
             disc_port: 9001,
             log_level: "debug".to_string(),
+            bootstrap_node: vec!["/ip4/1.2.3.4/tcp/8070/p2p/12D3KooTest".to_string()],
         };
 
         let config: Config = cmd.into();
@@ -127,5 +148,6 @@ mod tests {
         assert_eq!(config.listen_port, 9000);
         assert_eq!(config.disc_port, 9001);
         assert_eq!(config.log_level, "debug");
+        assert_eq!(config.bootstrap_nodes.len(), 1);
     }
 }

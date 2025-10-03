@@ -29,6 +29,37 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     info!("Listening on TCP port {}", config.listen_port);
     info!("Discovery on UDP port {}", config.disc_port);
 
+    // Add bootstrap nodes to Kademlia
+    let bootstrap_addrs = if config.bootstrap_nodes.is_empty() {
+        info!("No bootstrap nodes configured, fetching from testnet...");
+        Config::fetch_testnet_bootstrap_nodes().await
+            .map_err(|e| P2PError::Transport(format!("Failed to fetch bootstrap nodes: {}", e)))?
+    } else {
+        config.bootstrap_nodes.clone()
+    };
+
+    for node_addr in &bootstrap_addrs {
+        info!("Processing bootstrap: {}", node_addr);
+        if let Ok(addr) = node_addr.parse::<Multiaddr>() {
+            // Extract PeerId from multiaddr if present
+            if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
+                swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                info!("Added bootstrap peer: {} at {}", peer_id, addr);
+            } else {
+                warn!("Bootstrap address missing peer ID: {}", node_addr);
+            }
+        } else {
+            warn!("Invalid bootstrap address (not a valid multiaddr): {}", node_addr);
+        }
+    }
+
+    // Bootstrap the Kademlia DHT
+    if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
+        warn!("Kademlia bootstrap failed: {:?}", e);
+    } else {
+        info!("Kademlia bootstrap initiated");
+    }
+
     // Main event loop
     loop {
         tokio::select! {
@@ -62,6 +93,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                             }
                             BehaviourEvent::Identify(identify_event) => {
                                 info!("Identify event: {:?}", identify_event);
+                            }
+                            BehaviourEvent::Kademlia(kad_event) => {
+                                info!("Kademlia event: {:?}", kad_event);
                             }
                         }
                     }

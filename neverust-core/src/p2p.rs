@@ -4,7 +4,7 @@
 //! Yamux multiplexing, and Ping + Identify behaviors.
 
 use libp2p::{
-    identify, noise, ping, tcp, yamux, PeerId, Swarm, SwarmBuilder,
+    identify, kad, noise, ping, tcp, yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
 use std::time::Duration;
 use thiserror::Error;
@@ -21,18 +21,20 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Combined network behavior with Ping and Identify protocols
+/// Combined network behavior with Ping, Identify, and Kademlia protocols
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub ping: ping::Behaviour,
     pub identify: identify::Behaviour,
+    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
 }
 
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Ping(ping::Event),
     Identify(identify::Event),
+    Kademlia(kad::Event),
 }
 
 impl From<ping::Event> for BehaviourEvent {
@@ -47,6 +49,12 @@ impl From<identify::Event> for BehaviourEvent {
     }
 }
 
+impl From<kad::Event> for BehaviourEvent {
+    fn from(event: kad::Event) -> Self {
+        BehaviourEvent::Kademlia(event)
+    }
+}
+
 /// Create a new P2P swarm with default configuration
 pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
     // Generate keypair for this node
@@ -55,6 +63,10 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
 
     tracing::info!("Local peer ID: {}", peer_id);
 
+    // Create Kademlia with in-memory store
+    let store = kad::store::MemoryStore::new(peer_id);
+    let kademlia = kad::Behaviour::new(peer_id, store);
+
     // Create behaviors
     let behaviour = Behaviour {
         ping: ping::Behaviour::new(ping::Config::new()),
@@ -62,6 +74,7 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
             "/neverust/0.1.0".to_string(),
             keypair.public(),
         )),
+        kademlia,
     };
 
     // Build swarm with TCP + Noise + Yamux
