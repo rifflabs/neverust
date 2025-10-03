@@ -2203,6 +2203,7 @@ dependencies = [
  "base64 0.21.7",
  "clap",
  "futures",
+ "hex",
  "libp2p",
  "prost",
  "serde",
