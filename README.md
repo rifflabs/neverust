@@ -24,10 +24,14 @@ Build a production-ready, high-performance Archivist Storage node with:
 - All tests passing
 
 **Phase 1: IN PROGRESS** 🚧 (Days 1-2)
-- Kademlia DHT integration
-- Block storage (CID-based)
-- REST API endpoints
-- Health checks and metrics
+- ✅ Kademlia DHT integration
+- ✅ Gossipsub pub-sub protocol
+- ✅ Archivist protocol compatibility (`/archivist/1.0.0`)
+- ✅ Subscribed to `blocks` and `transactions` topics
+- ⚠️ Bootstrap node connectivity (testnet node appears offline/firewalled)
+- 🚧 Block storage (CID-based)
+- 🚧 REST API endpoints
+- 🚧 Health checks and metrics
 
 See [ISSUES.md](./ISSUES.md) for complete roadmap (150 issues tracked)
 

@@ -53,6 +53,17 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         }
     }
 
+    // Subscribe to Archivist Gossipsub topics
+    let blocks_topic = libp2p::gossipsub::IdentTopic::new("blocks");
+    let transactions_topic = libp2p::gossipsub::IdentTopic::new("transactions");
+
+    swarm.behaviour_mut().gossipsub.subscribe(&blocks_topic)
+        .map_err(|e| P2PError::Swarm(format!("Failed to subscribe to blocks topic: {}", e)))?;
+    swarm.behaviour_mut().gossipsub.subscribe(&transactions_topic)
+        .map_err(|e| P2PError::Swarm(format!("Failed to subscribe to transactions topic: {}", e)))?;
+
+    info!("Subscribed to Gossipsub topics: blocks, transactions");
+
     // Bootstrap the Kademlia DHT
     if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
         warn!("Kademlia bootstrap failed: {:?}", e);
@@ -96,6 +107,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                             }
                             BehaviourEvent::Kademlia(kad_event) => {
                                 info!("Kademlia event: {:?}", kad_event);
+                            }
+                            BehaviourEvent::Gossipsub(gossipsub_event) => {
+                                info!("Gossipsub event: {:?}", gossipsub_event);
                             }
                         }
                     }

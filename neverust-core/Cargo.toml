@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Core P2P and storage functionality for Neverust"
 
 [dependencies]
-libp2p = { version = "0.53", features = ["tcp", "noise", "yamux", "ping", "identify", "kad", "tokio", "macros"] }
+libp2p = { version = "0.53", features = ["tcp", "noise", "yamux", "ping", "identify", "kad", "gossipsub", "tokio", "macros"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 thiserror = "1.0"

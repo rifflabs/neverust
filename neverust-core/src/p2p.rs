@@ -4,7 +4,7 @@
 //! Yamux multiplexing, and Ping + Identify behaviors.
 
 use libp2p::{
-    identify, kad, noise, ping, tcp, yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
+    gossipsub, identify, kad, noise, ping, tcp, yamux, PeerId, Swarm, SwarmBuilder,
 };
 use std::time::Duration;
 use thiserror::Error;
@@ -21,13 +21,14 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Combined network behavior with Ping, Identify, and Kademlia protocols
+/// Combined network behavior with Ping, Identify, Kademlia, and Gossipsub protocols
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub ping: ping::Behaviour,
     pub identify: identify::Behaviour,
     pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
+    pub gossipsub: gossipsub::Behaviour,
 }
 
 #[derive(Debug)]
@@ -35,6 +36,7 @@ pub enum BehaviourEvent {
     Ping(ping::Event),
     Identify(identify::Event),
     Kademlia(kad::Event),
+    Gossipsub(gossipsub::Event),
 }
 
 impl From<ping::Event> for BehaviourEvent {
@@ -55,6 +57,12 @@ impl From<kad::Event> for BehaviourEvent {
     }
 }
 
+impl From<gossipsub::Event> for BehaviourEvent {
+    fn from(event: gossipsub::Event) -> Self {
+        BehaviourEvent::Gossipsub(event)
+    }
+}
+
 /// Create a new P2P swarm with default configuration
 pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
     // Generate keypair for this node
@@ -67,14 +75,28 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
     let store = kad::store::MemoryStore::new(peer_id);
     let kademlia = kad::Behaviour::new(peer_id, store);
 
+    // Create Gossipsub with message signing
+    let gossipsub_config = gossipsub::ConfigBuilder::default()
+        .heartbeat_interval(Duration::from_secs(10))
+        .validation_mode(gossipsub::ValidationMode::Strict)
+        .build()
+        .map_err(|e| P2PError::Swarm(format!("Gossipsub config error: {}", e)))?;
+
+    let gossipsub = gossipsub::Behaviour::new(
+        gossipsub::MessageAuthenticity::Signed(keypair.clone()),
+        gossipsub_config,
+    )
+    .map_err(|e| P2PError::Swarm(format!("Gossipsub creation error: {}", e)))?;
+
     // Create behaviors
     let behaviour = Behaviour {
         ping: ping::Behaviour::new(ping::Config::new()),
         identify: identify::Behaviour::new(identify::Config::new(
-            "/neverust/0.1.0".to_string(),
+            "/archivist/1.0.0".to_string(),
             keypair.public(),
         )),
         kademlia,
+        gossipsub,
     };
 
     // Build swarm with TCP + Noise + Yamux
