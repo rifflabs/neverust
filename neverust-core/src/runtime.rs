@@ -22,23 +22,12 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         .map_err(|e| P2PError::Transport(format!("Invalid TCP address: {}", e)))?;
 
     swarm
-        .listen_on(tcp_addr)
-        .map_err(|e| P2PError::Transport(format!("Failed to listen on TCP: {}", e)))?;
-
-    // Also listen on QUIC (using disc_port)
-    let quic_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", config.disc_port)
-        .parse()
-        .map_err(|e| P2PError::Transport(format!("Invalid QUIC address: {}", e)))?;
-
-    swarm
-        .listen_on(quic_addr)
-        .map_err(|e| P2PError::Transport(format!("Failed to listen on QUIC: {}", e)))?;
+        .listen_on(tcp_addr.clone())
+        .map_err(|e| P2PError::Transport(format!("Failed to listen on TCP {}: {}", tcp_addr, e)))?;
 
     info!("Node started with peer ID: {}", swarm.local_peer_id());
-    info!("Listening on TCP port {}", config.listen_port);
-    info!("Listening on QUIC port {}", config.disc_port);
 
-    // Add bootstrap nodes to Kademlia
+    // Fetch bootstrap nodes early
     let bootstrap_addrs = if config.bootstrap_nodes.is_empty() {
         info!("No bootstrap nodes configured, fetching from testnet...");
         Config::fetch_testnet_bootstrap_nodes().await
@@ -47,38 +36,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         config.bootstrap_nodes.clone()
     };
 
-    for node_addr in &bootstrap_addrs {
-        info!("Processing bootstrap: {}", node_addr);
-        if let Ok(addr) = node_addr.parse::<Multiaddr>() {
-            // Extract PeerId from multiaddr if present
-            if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
-                swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
-                info!("Added bootstrap peer: {} at {}", peer_id, addr);
-            } else {
-                warn!("Bootstrap address missing peer ID: {}", node_addr);
-            }
-        } else {
-            warn!("Invalid bootstrap address (not a valid multiaddr): {}", node_addr);
-        }
-    }
-
-    // Subscribe to Archivist Gossipsub topics
-    let blocks_topic = libp2p::gossipsub::IdentTopic::new("blocks");
-    let transactions_topic = libp2p::gossipsub::IdentTopic::new("transactions");
-
-    swarm.behaviour_mut().gossipsub.subscribe(&blocks_topic)
-        .map_err(|e| P2PError::Swarm(format!("Failed to subscribe to blocks topic: {}", e)))?;
-    swarm.behaviour_mut().gossipsub.subscribe(&transactions_topic)
-        .map_err(|e| P2PError::Swarm(format!("Failed to subscribe to transactions topic: {}", e)))?;
-
-    info!("Subscribed to Gossipsub topics: blocks, transactions");
-
-    // Bootstrap the Kademlia DHT
-    if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
-        warn!("Kademlia bootstrap failed: {:?}", e);
-    } else {
-        info!("Kademlia bootstrap initiated");
-    }
+    // Track if we've established listen addresses
+    let mut tcp_listening = false;
+    let mut bootstrapped = false;
 
     // Main event loop
     loop {
@@ -87,6 +47,61 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                 match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
                         info!("Listening on {}", address);
+
+                        // Track TCP listening
+                        if address.to_string().contains("/tcp/") {
+                            tcp_listening = true;
+                        }
+
+                        // Once TCP is listening, add bootstrap nodes
+                        if tcp_listening && !bootstrapped {
+                            info!("Listen addresses established, adding bootstrap nodes...");
+
+                            for node_addr in &bootstrap_addrs {
+                                info!("Processing bootstrap: {}", node_addr);
+                                if let Ok(addr) = node_addr.parse::<Multiaddr>() {
+                                    if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
+                                        swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                                        info!("Added bootstrap peer: {} at {}", peer_id, addr);
+                                    } else {
+                                        warn!("Bootstrap address missing peer ID: {}", node_addr);
+                                    }
+                                } else {
+                                    warn!("Invalid bootstrap address: {}", node_addr);
+                                }
+                            }
+
+                            // Subscribe to Gossipsub topics
+                            let blocks_topic = libp2p::gossipsub::IdentTopic::new("blocks");
+                            let transactions_topic = libp2p::gossipsub::IdentTopic::new("transactions");
+
+                            if let Err(e) = swarm.behaviour_mut().gossipsub.subscribe(&blocks_topic) {
+                                warn!("Failed to subscribe to blocks topic: {}", e);
+                            }
+                            if let Err(e) = swarm.behaviour_mut().gossipsub.subscribe(&transactions_topic) {
+                                warn!("Failed to subscribe to transactions topic: {}", e);
+                            }
+                            info!("Subscribed to Gossipsub topics: blocks, transactions");
+
+                            // Explicitly dial first bootstrap peer to test connection
+                            if let Some(first_bootstrap) = bootstrap_addrs.first() {
+                                if let Ok(addr) = first_bootstrap.parse::<Multiaddr>() {
+                                    info!("Explicitly dialing first bootstrap peer: {}", addr);
+                                    if let Err(e) = swarm.dial(addr.clone()) {
+                                        error!("Failed to dial bootstrap peer: {:?}", e);
+                                    }
+                                }
+                            }
+
+                            // Bootstrap Kademlia
+                            if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
+                                warn!("Kademlia bootstrap failed: {:?}", e);
+                            } else {
+                                info!("Kademlia bootstrap initiated");
+                            }
+
+                            bootstrapped = true;
+                        }
                     }
                     SwarmEvent::ConnectionEstablished {
                         peer_id,

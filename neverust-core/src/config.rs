@@ -111,13 +111,24 @@ impl Config {
         let records = parse_spr_records(&response)
             .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
 
-        // Convert to multiaddr strings with peer IDs
+        // Convert UDP discovery addresses to TCP for actual connections
+        // (UDP addresses in SPR are for discv5 discovery only)
         let mut multiaddrs = Vec::new();
         for (peer_id, addrs) in records {
             for addr in addrs {
-                // Add peer ID to multiaddr
-                let full_addr = format!("{}/p2p/{}", addr, peer_id);
-                multiaddrs.push(full_addr);
+                let addr_str = addr.to_string();
+                // SPR contains UDP addresses for discovery - convert to TCP for connections
+                // Extract IP and convert UDP port to TCP (same port typically)
+                if addr_str.contains("/udp/") {
+                    // Convert /ip4/X.X.X.X/udp/PORT to /ip4/X.X.X.X/tcp/PORT/p2p/PEER_ID
+                    let tcp_addr = addr_str.replace("/udp/", "/tcp/");
+                    let full_addr = format!("{}/p2p/{}", tcp_addr, peer_id);
+                    multiaddrs.push(full_addr);
+                } else {
+                    // For TCP or other protocols, just add peer ID
+                    let full_addr = format!("{}/p2p/{}", addr, peer_id);
+                    multiaddrs.push(full_addr);
+                }
             }
         }
 

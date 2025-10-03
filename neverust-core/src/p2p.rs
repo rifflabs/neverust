@@ -4,7 +4,7 @@
 //! Yamux multiplexing, and Ping + Identify behaviors.
 
 use libp2p::{
-    gossipsub, identify, kad, noise, ping, quic, tcp, yamux, PeerId, Swarm, SwarmBuilder,
+    gossipsub, identify, kad, noise, ping, tcp, yamux, PeerId, Swarm, SwarmBuilder,
 };
 use std::time::Duration;
 use thiserror::Error;
@@ -99,16 +99,16 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
         gossipsub,
     };
 
-    // Build swarm with TCP + QUIC transports
-    let swarm = SwarmBuilder::with_new_identity()
+    // Build swarm with TCP transport, Noise security, and Yamux multiplexing
+    // (matching Archivist's configuration)
+    let swarm = SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(
-            tcp::Config::default(),
+            tcp::Config::default().nodelay(true).port_reuse(true),
             noise::Config::new,
             yamux::Config::default,
         )
         .map_err(|e| P2PError::Transport(e.to_string()))?
-        .with_quic()
         .with_behaviour(|_| behaviour)
         .map_err(|e| P2PError::Swarm(e.to_string()))?
         .with_swarm_config(|c| {
