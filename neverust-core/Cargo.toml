@@ -1,0 +1,21 @@
+[package]
+name = "neverust-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Neverust Contributors"]
+license = "MIT OR Apache-2.0"
+description = "Core P2P and storage functionality for Neverust"
+
+[dependencies]
+libp2p = { version = "0.53", features = ["tcp", "noise", "yamux", "ping", "identify", "kad", "tokio", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+futures = "0.3"
+void = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
