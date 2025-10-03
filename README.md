@@ -13,6 +13,24 @@ Build a production-ready, high-performance Archivist Storage node with:
 - Complete observability and operational readiness
 - Phoenix-style phase-based development methodology
 
+## Current Status
+
+**Phase 0: COMPLETE** ✅ (Completed 2025-10-03)
+- Working P2P node with libp2p
+- TCP transport with Noise encryption + Yamux multiplexing
+- Ping + Identify protocols operational
+- CLI with configuration options
+- Structured logging with tracing
+- All tests passing
+
+**Phase 1: IN PROGRESS** 🚧 (Days 1-2)
+- Kademlia DHT integration
+- Block storage (CID-based)
+- REST API endpoints
+- Health checks and metrics
+
+See [ISSUES.md](./ISSUES.md) for complete roadmap (150 issues tracked)
+
 ---
 
 # Development Methodology
@@ -220,22 +238,31 @@ See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
 ## Quick Start
 
 ```bash
-# Build and test
-pal build
-pal test
+# Build
+cargo build --release
 
-# Run with hot-reload
-pal run
+# Run the node
+cargo run -- start
 
-# Generate next tasks
-pal next --fast
+# Run with custom options
+cargo run -- start --data-dir ./my-data --listen-port 9000 --log-level debug
 
-# Multi-device UI testing
-npx playwright test --project=desktop-1080p-chromium
-npx playwright test  # Run all device profiles
+# Test
+cargo test
 
-# Generate reports (Phase 3)
-# Director's Report, Features Report via Zen MCP + GPT-5
+# CLI help
+cargo run -- start --help
+```
+
+### Example Output
+
+```
+INFO neverust: Starting Neverust node...
+INFO neverust_core::p2p: Local peer ID: 12D3KooWJQgUiKtBcQWooTJhvP2degnM77ca64nggKzG7s9crnMs
+INFO neverust_core::runtime: Node started with peer ID: 12D3KooWJQgUiKtBcQWooTJhvP2degnM77ca64nggKzG7s9crnMs
+INFO neverust_core::runtime: Listening on TCP port 8070
+INFO neverust_core::runtime: Listening on /ip4/127.0.0.1/tcp/8070
+INFO neverust_core::runtime: Listening on /ip4/10.7.1.193/tcp/8070
 ```
 
 ---
