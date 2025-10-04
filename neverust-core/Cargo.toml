@@ -26,7 +26,7 @@ multihash = "0.19"
 cid = "0.11"
 unsigned-varint = "0.8"
 
-# TGP (Temporal Graph Protocol) for Block-over-TGP (BoTG)
+# TGP (Two Generals Protocol) for Block-over-TGP (BoTG)
 consensus-tgp = { path = "../crates/tgp" }
 consensus-common = { path = "../crates/common" }
 

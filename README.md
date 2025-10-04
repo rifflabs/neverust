@@ -26,10 +26,11 @@ Build a production-ready, high-performance Archivist Storage node with:
 **Phase 1: IN PROGRESS** 🚧 (Days 1-2)
 - ✅ Archivist BlockExc protocol (`/archivist/blockexc/1.0.0`)
 - ✅ Testnet connectivity (TCP + Noise + Mplex)
-- ✅ TGP (Temporal Graph Protocol) integration (12-13x faster than TCP)
+- ✅ TGP (Two Generals Protocol) integration (12-13x faster than TCP)
 - ✅ Block-over-TGP (BoTG) protocol for Neverust-to-Neverust block exchange
-- 🚧 BlockExc protobuf message encoding/decoding
-- 🚧 Block storage (CID-based)
+- ✅ BlockExc protobuf message encoding/decoding
+- ✅ Block storage (CID-based with BLAKE3 verification)
+- 🚧 Integration tests for testnet connectivity
 - 🚧 REST API endpoints
 - 🚧 Health checks and metrics
 
@@ -275,7 +276,7 @@ INFO neverust_core::runtime: Listening on /ip4/10.7.1.193/tcp/8070
 
 Neverust implements a revolutionary two-layer block exchange protocol for Neverust-to-Neverust communication:
 
-### Layer 1: TGP (Temporal Graph Protocol)
+### Layer 1: TGP (Two Generals Protocol)
 - **12-13x faster than TCP** across all packet loss scenarios
 - Linear degradation: 50% loss → 50% throughput (predictable)
 - Extreme loss tolerance: **1+ Mbps at 99% packet loss**

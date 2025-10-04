@@ -2223,6 +2223,8 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "futures-util",
+ "libp2p",
  "neverust-core",
  "predicates",
  "tempfile",

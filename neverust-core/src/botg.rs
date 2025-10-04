@@ -1,7 +1,7 @@
 //! Block-over-TGP (BoTG) Protocol
 //!
 //! Two-layer fault-tolerant block exchange protocol:
-//! - Layer 1: TGP (Temporal Graph Protocol) provides reliable high-speed transport (12-13x faster than TCP)
+//! - Layer 1: TGP (Two Generals Protocol) provides reliable high-speed transport (12-13x faster than TCP)
 //! - Layer 2: BoTG provides rollup-based block exchange with instant convergence
 //!
 //! Design Philosophy:
