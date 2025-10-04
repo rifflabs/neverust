@@ -3,7 +3,7 @@
 //! Implements the core P2P stack with TCP+Noise+Mplex transports
 //! and BlockExc protocol (matching Archivist exactly).
 
-use libp2p::{noise, tcp, PeerId, Swarm, SwarmBuilder};
+use libp2p::{identify, noise, tcp, PeerId, Swarm, SwarmBuilder};
 use libp2p_mplex as mplex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,11 +24,36 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Network behavior with ONLY BlockExc protocol (matching Archivist)
+/// Network behavior with BlockExc + Identify protocols
 #[derive(libp2p::swarm::NetworkBehaviour)]
-#[behaviour(to_swarm = "()")]
+#[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub blockexc: BlockExcBehaviour,
+    pub identify: identify::Behaviour,
+}
+
+#[derive(Debug)]
+pub enum BehaviourEvent {
+    Identify(identify::Event),
+}
+
+impl From<identify::Event> for BehaviourEvent {
+    fn from(event: identify::Event) -> Self {
+        BehaviourEvent::Identify(event)
+    }
+}
+
+impl From<void::Void> for BehaviourEvent {
+    fn from(v: void::Void) -> Self {
+        void::unreachable(v)
+    }
+}
+
+impl From<()> for BehaviourEvent {
+    fn from(_: ()) -> Self {
+        // BlockExc doesn't emit events, this should never be called
+        unreachable!("BlockExc behavior doesn't emit events")
+    }
 }
 
 /// Create a new P2P swarm with default configuration
@@ -44,9 +69,16 @@ pub async fn create_swarm(
 
     tracing::info!("Local peer ID: {} (mode: {})", peer_id, mode);
 
-    // Create behavior: ONLY BlockExc (Archivist nodes don't use Ping or Identify)
+    // Create identify config for peer discovery and protocol negotiation
+    let identify_config = identify::Behaviour::new(identify::Config::new(
+        "/neverust/0.1.0".to_string(),
+        keypair.public(),
+    ));
+
+    // Create behavior: BlockExc + Identify for testnet compatibility
     let behaviour = Behaviour {
         blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics),
+        identify: identify_config,
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
@@ -78,7 +110,8 @@ mod tests {
     #[tokio::test]
     async fn test_create_swarm() {
         let block_store = Arc::new(BlockStore::new());
-        let swarm = create_swarm(block_store, "altruistic".to_string(), 1)
+        let metrics = crate::metrics::Metrics::new();
+        let swarm = create_swarm(block_store, "altruistic".to_string(), 1, metrics)
             .await
             .unwrap();
         assert!(swarm.local_peer_id().to_string().len() > 0);
@@ -87,7 +120,8 @@ mod tests {
     #[tokio::test]
     async fn test_swarm_can_listen() {
         let block_store = Arc::new(BlockStore::new());
-        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1)
+        let metrics = crate::metrics::Metrics::new();
+        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1, metrics)
             .await
             .unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();

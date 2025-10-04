@@ -1,0 +1,83 @@
+warning: field `outbound_requested` is never read
+  --> neverust-core/src/blockexc.rs:26:5
+   |
+22 | pub struct BlockExcHandler {
+   |            --------------- field in this struct
+...
+26 |     outbound_requested: bool,
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `neverust-core` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 1.22s
+     Running `target/release/neverust start --log-level info`
+[2m2025-10-04T08:44:53.826213Z[0m [32m INFO[0m [2mneverust[0m[2m:[0m Starting Neverust node...
+[2m2025-10-04T08:44:53.826242Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Initialized block store
+[2m2025-10-04T08:44:53.826245Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Initialized metrics collector
+[2m2025-10-04T08:44:53.826281Z[0m [32m INFO[0m [2mneverust_core::p2p[0m[2m:[0m Local peer ID: 12D3KooWM4kaNwbwC9oNkNzDRjy66J84Gy58CCWrMdB7zc1ZVj7R (mode: altruistic)
+[2m2025-10-04T08:44:53.826375Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Initializing BoTG protocol on UDP port 8090
+[2m2025-10-04T08:44:53.826399Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BoTG: UDP socket bound to 0.0.0.0:8090
+[2m2025-10-04T08:44:53.826418Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BoTG ready for high-speed block exchange via UDP
+[2m2025-10-04T08:44:53.826461Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Starting UDP receive loop
+[2m2025-10-04T08:44:53.826487Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Node started with peer ID: 12D3KooWM4kaNwbwC9oNkNzDRjy66J84Gy58CCWrMdB7zc1ZVj7R
+[2m2025-10-04T08:44:53.826496Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m No bootstrap nodes configured, fetching...
+[2m2025-10-04T08:44:53.826498Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Falling back to Archivist testnet bootstrap nodes
+[2m2025-10-04T08:44:53.826576Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Starting REST API on 0.0.0.0:8080
+[2m2025-10-04T08:44:53.882124Z[0m [32m INFO[0m [2mneverust_core::spr[0m[2m:[0m Parsed SPR: peer_id=16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz, addrs=[/ip4/78.47.168.170/udp/30010, /ip4/78.47.168.170/udp/30010]
+[2m2025-10-04T08:44:53.882167Z[0m [32m INFO[0m [2mneverust_core::spr[0m[2m:[0m Parsed SPR: peer_id=16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH, addrs=[/ip4/5.161.24.19/udp/30020, /ip4/5.161.24.19/udp/30020]
+[2m2025-10-04T08:44:53.882181Z[0m [32m INFO[0m [2mneverust_core::spr[0m[2m:[0m Parsed SPR: peer_id=16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk, addrs=[/ip4/5.223.21.208/udp/30030, /ip4/5.223.21.208/udp/30030]
+[2m2025-10-04T08:44:53.882191Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/78.47.168.170/udp/30010 -> /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882196Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/78.47.168.170/udp/30010 -> /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882201Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/5.161.24.19/udp/30020 -> /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882204Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/5.161.24.19/udp/30020 -> /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882208Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/5.223.21.208/udp/30030 -> /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882212Z[0m [32m INFO[0m [2mneverust_core::config[0m[2m:[0m Converted UDP to TCP: /ip4/5.223.21.208/udp/30030 -> /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882523Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Listening on TCP: /ip4/127.0.0.1/tcp/8070
+[2m2025-10-04T08:44:53.882531Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m TCP transport ready, dialing bootstrap nodes...
+[2m2025-10-04T08:44:53.882533Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882697Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882702Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882730Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.882732Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882745Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882747Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882850Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:53.882853Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882890Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882894Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing bootstrap: /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882914Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Dialing /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:53.882933Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Listening on TCP: /ip4/10.7.1.193/tcp/8070
+[2m2025-10-04T08:44:53.882937Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Listening on TCP: /ip4/10.7.1.121/tcp/8070
+[2m2025-10-04T08:44:53.882942Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Listening on TCP: /ip4/172.17.0.1/tcp/8070
+[2m2025-10-04T08:44:53.950478Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz at /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.951901Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz at /ip4/78.47.168.170/tcp/30010/p2p/16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz
+[2m2025-10-04T08:44:53.975090Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:53.975125Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:53.977063Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:53.977093Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAmNzgyd948rRhmuZ6HSLU2r78kzDXkg5pi12atgQe48vNz: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:54.126404Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH at /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:54.127324Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH at /ip4/5.161.24.19/tcp/30020/p2p/16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH
+[2m2025-10-04T08:44:54.207403Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:54.207501Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:54.209250Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:54.209276Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAkw9nTRAQ9UXVtmbvXvZtzNwJVbzmG72x9hBmLtYqwyrbH: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:54.453275Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk at /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:54.453992Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m Connected to peer: 16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk at /ip4/5.223.21.208/tcp/30030/p2p/16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk
+[2m2025-10-04T08:44:54.643169Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:54.643213Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:54.644989Z[0m [32m INFO[0m [2mneverust_core::runtime[0m[2m:[0m BlockExc event
+[2m2025-10-04T08:44:54.645019Z[0m [33m WARN[0m [2mneverust_core::runtime[0m[2m:[0m Connection closed with 16Uiu2HAm31FhvC51bowz9ERL73FmdVvXXz7vwNWFZ4WnXBnBvHUk: Some(IO(Custom { kind: Other, error: Custom { kind: UnexpectedEof, error: "unexpected end of file" } }))
+[2m2025-10-04T08:44:58.827546Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.0.10:8090
+[2m2025-10-04T08:44:58.827590Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.2:8090
+[2m2025-10-04T08:44:58.827596Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.3:8090
+[2m2025-10-04T08:44:58.827599Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.4:8090
+[2m2025-10-04T08:44:58.827600Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.5:8090
+[2m2025-10-04T08:44:58.827602Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.6:8090
+[2m2025-10-04T08:44:58.827603Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.7:8090
+[2m2025-10-04T08:44:58.827605Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.8:8090
+[2m2025-10-04T08:44:58.827606Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.9:8090
+[2m2025-10-04T08:44:58.827607Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.10:8090
+[2m2025-10-04T08:44:58.827608Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.11:8090
+[2m2025-10-04T08:44:58.827610Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.12:8090
+[2m2025-10-04T08:44:58.827611Z[0m [32m INFO[0m [2mneverust_core::botg[0m[2m:[0m BoTG: Added peer 172.25.1.13:8090

@@ -89,22 +89,15 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
-        // Enable outbound BlockExc streams for Neverust-to-Neverust communication
-        // For Archivist testnet compatibility, those nodes will reject client-initiated streams,
-        // but Neverust nodes accept bidirectional BlockExc
-        if !self.outbound_requested && !self.has_active_stream {
-            info!(
-                "BlockExc: Requesting outbound stream to peer {}",
-                self.peer_id
-            );
-            self.outbound_requested = true;
-            return std::task::Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
-                protocol: SubstreamProtocol::new(
-                    ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
-                    (),
-                ),
-            });
-        }
+        // DISABLED: Automatic outbound streams cause DialUpgradeErrors with Archivist testnet nodes
+        // Testnet bootstrap nodes only accept inbound requests (server-side only)
+        // For peer-to-peer Neverust communication, we'll implement demand-driven outbound streams
+        // when we actually need to request blocks (not automatically on every connection)
+
+        // TODO: Implement on-demand outbound stream requests:
+        // - When we want to request specific blocks via WantList
+        // - Detect peer capabilities (Neverust vs flagship) via identify protocol
+        // - Only auto-dial for Neverust-to-Neverust communication
 
         std::task::Poll::Pending
     }
