@@ -130,21 +130,22 @@ impl Config {
             .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
 
         // Convert UDP discovery addresses to TCP for actual connections
-        // (UDP addresses in SPR are for discv5 discovery only)
+        // Archivist testnet nodes use TCP+Noise+Mplex (NOT QUIC)
         let mut multiaddrs = Vec::new();
         for (peer_id, addrs) in records {
             for addr in addrs {
                 let addr_str = addr.to_string();
-                // SPR contains UDP addresses for discovery - convert to TCP for connections
-                // Extract IP and convert UDP port to TCP (same port typically)
+                // SPR contains UDP addresses - convert to TCP multiaddrs
                 if addr_str.contains("/udp/") {
                     // Convert /ip4/X.X.X.X/udp/PORT to /ip4/X.X.X.X/tcp/PORT/p2p/PEER_ID
                     let tcp_addr = addr_str.replace("/udp/", "/tcp/");
                     let full_addr = format!("{}/p2p/{}", tcp_addr, peer_id);
+                    tracing::info!("Converted UDP to TCP: {} -> {}", addr_str, full_addr);
                     multiaddrs.push(full_addr);
                 } else {
-                    // For TCP or other protocols, just add peer ID
+                    // For other protocols, just add peer ID
                     let full_addr = format!("{}/p2p/{}", addr, peer_id);
+                    tracing::info!("Other protocol: {}", full_addr);
                     multiaddrs.push(full_addr);
                 }
             }

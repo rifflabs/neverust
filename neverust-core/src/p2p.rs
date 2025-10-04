@@ -1,7 +1,7 @@
 //! P2P networking layer using rust-libp2p
 //!
-//! Implements the core P2P stack with TCP transport, Noise encryption,
-//! Mplex multiplexing, and BlockExc protocol (matching Archivist exactly).
+//! Implements the core P2P stack with TCP+Noise+Mplex transports
+//! and BlockExc protocol (matching Archivist exactly).
 
 use libp2p::{
     noise, tcp, PeerId, Swarm, SwarmBuilder,
@@ -46,8 +46,8 @@ pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_
         blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte),
     };
 
-    // Build swarm with TCP transport, Noise security, and Mplex multiplexing
-    // (matching Archivist's configuration)
+    // Build swarm with TCP transport to match Archivist testnet nodes
+    // Archivist uses TCP+Noise+Mplex (NOT QUIC)
     let swarm = SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(

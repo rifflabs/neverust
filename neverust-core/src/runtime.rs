@@ -33,7 +33,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Create swarm with block store and operating mode
     let mut swarm = create_swarm(block_store, config.mode.clone(), config.price_per_byte).await?;
 
-    // Start listening on TCP
+    // Start listening on TCP (Archivist uses TCP+Noise+Mplex, NOT QUIC)
     let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.listen_port)
         .parse()
         .map_err(|e| P2PError::Transport(format!("Invalid TCP address: {}", e)))?;
@@ -63,16 +63,17 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
             event = swarm.select_next_some() => {
                 match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        info!("Listening on {}", address);
-
-                        // Track TCP listening
+                        // Track transport types
                         if address.to_string().contains("/tcp/") {
+                            info!("Listening on TCP: {}", address);
                             tcp_listening = true;
+                        } else {
+                            info!("Listening on {}", address);
                         }
 
                         // Once TCP is listening, dial bootstrap nodes
                         if tcp_listening && !bootstrapped {
-                            info!("Listen addresses established, dialing bootstrap nodes...");
+                            info!("TCP transport ready, dialing bootstrap nodes...");
 
                             // Dial all bootstrap peers directly
                             // (Archivist doesn't use Kademlia - uses custom BlockExc protocol)
