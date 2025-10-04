@@ -8,13 +8,14 @@ use crate::{
     botg::{BoTgConfig, BoTgProtocol},
     config::Config,
     metrics::Metrics,
-    p2p::{create_swarm, P2PError},
+    p2p::{create_swarm, PeerCapability, PeerRegistry, P2PError},
     storage::BlockStore,
     traffic,
 };
 use futures::StreamExt;
 use libp2p::{swarm::SwarmEvent, Multiaddr};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use tokio::signal;
 use tracing::{error, info, warn};
 
@@ -31,6 +32,10 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Create metrics collector
     let metrics = Metrics::new();
     info!("Initialized metrics collector");
+
+    // Create peer capability registry for tracking Neverust vs Archivist-Node peers
+    let peer_registry: PeerRegistry = Arc::new(RwLock::new(HashMap::new()));
+    info!("Initialized peer capability registry");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
     let mut swarm = create_swarm(
@@ -250,11 +255,23 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                                         );
 
                                         // Detect if peer is Neverust (supports range retrieval)
-                                        let is_neverust = info.agent_version.contains("/neverust/");
-                                        if is_neverust {
+                                        let supports_ranges = info.agent_version.contains("/neverust/");
+                                        if supports_ranges {
                                             info!("Peer {} is Neverust-capable (supports range retrieval)", peer_id);
                                         } else {
                                             info!("Peer {} is Archivist-Node (requires full blocks)", peer_id);
+                                        }
+
+                                        // Store peer capability in registry
+                                        let capability = PeerCapability {
+                                            supports_ranges,
+                                            agent_version: info.agent_version.clone(),
+                                            protocol_version: info.protocol_version.clone(),
+                                        };
+
+                                        if let Ok(mut registry) = peer_registry.write() {
+                                            registry.insert(peer_id, capability);
+                                            info!("Stored capability for peer {} ({} peers tracked)", peer_id, registry.len());
                                         }
 
                                         // Log supported protocols

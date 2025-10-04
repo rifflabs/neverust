@@ -5,12 +5,27 @@
 
 use libp2p::{identify, noise, tcp, PeerId, Swarm, SwarmBuilder};
 use libp2p_mplex as mplex;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::blockexc::BlockExcBehaviour;
 use crate::storage::BlockStore;
+
+/// Peer capability information
+#[derive(Debug, Clone)]
+pub struct PeerCapability {
+    /// Whether peer supports Neverust extensions (range retrieval)
+    pub supports_ranges: bool,
+    /// Peer's agent version string
+    pub agent_version: String,
+    /// Peer's protocol version
+    pub protocol_version: String,
+}
+
+/// Peer capability registry for tracking which peers support range retrieval
+pub type PeerRegistry = Arc<RwLock<HashMap<PeerId, PeerCapability>>>;
 
 #[derive(Error, Debug)]
 pub enum P2PError {
