@@ -305,4 +305,110 @@ mod tests {
         assert!(decoded.account.is_some());
         assert!(decoded.payment.is_some());
     }
+
+    #[test]
+    fn test_range_request_encoding() {
+        // Test encoding a range request (Neverust extension)
+        let msg = Message {
+            wantlist: Some(Wantlist {
+                entries: vec![WantlistEntry {
+                    block: vec![1, 2, 3, 4],
+                    priority: 100,
+                    cancel: false,
+                    want_type: WantType::WantBlock as i32,
+                    send_dont_have: false,
+                    start_byte: 1024,  // Request bytes 1024-2048
+                    end_byte: 2048,
+                }],
+                full: false,
+            }),
+            payload: vec![],
+            block_presences: vec![],
+            pending_bytes: 0,
+            account: None,
+            payment: None,
+        };
+
+        let encoded = encode_message(&msg).unwrap();
+        let decoded = decode_message(&encoded).unwrap();
+
+        assert_eq!(msg, decoded);
+        let entry = &decoded.wantlist.as_ref().unwrap().entries[0];
+        assert_eq!(entry.start_byte, 1024);
+        assert_eq!(entry.end_byte, 2048);
+    }
+
+    #[test]
+    fn test_range_response_encoding() {
+        // Test encoding a range response (Neverust extension)
+        let msg = Message {
+            wantlist: None,
+            payload: vec![Block {
+                prefix: vec![0x12, 0x20],
+                data: vec![7, 8, 9], // 3 bytes of range data
+                range_start: 1024,   // This is bytes 1024-1027 of a 5000-byte block
+                range_end: 1027,
+                total_size: 5000,
+            }],
+            block_presences: vec![],
+            pending_bytes: 0,
+            account: None,
+            payment: None,
+        };
+
+        let encoded = encode_message(&msg).unwrap();
+        let decoded = decode_message(&encoded).unwrap();
+
+        assert_eq!(msg, decoded);
+        let block = &decoded.payload[0];
+        assert_eq!(block.data.len(), 3);
+        assert_eq!(block.range_start, 1024);
+        assert_eq!(block.range_end, 1027);
+        assert_eq!(block.total_size, 5000);
+    }
+
+    #[test]
+    fn test_full_block_backward_compatible() {
+        // Test that full block requests are backward compatible (all range fields = 0)
+        let msg = Message {
+            wantlist: Some(Wantlist {
+                entries: vec![WantlistEntry {
+                    block: vec![1, 2, 3, 4],
+                    priority: 100,
+                    cancel: false,
+                    want_type: WantType::WantBlock as i32,
+                    send_dont_have: false,
+                    start_byte: 0,  // Full block
+                    end_byte: 0,    // Full block
+                }],
+                full: false,
+            }),
+            payload: vec![Block {
+                prefix: vec![0x12, 0x20],
+                data: vec![1, 2, 3, 4, 5],
+                range_start: 0,  // Full block
+                range_end: 0,    // Full block
+                total_size: 0,   // Full block
+            }],
+            block_presences: vec![],
+            pending_bytes: 0,
+            account: None,
+            payment: None,
+        };
+
+        let encoded = encode_message(&msg).unwrap();
+        let decoded = decode_message(&encoded).unwrap();
+
+        assert_eq!(msg, decoded);
+
+        // Verify all range fields are 0 (backward compatible with Archivist-Node)
+        let entry = &decoded.wantlist.as_ref().unwrap().entries[0];
+        assert_eq!(entry.start_byte, 0);
+        assert_eq!(entry.end_byte, 0);
+
+        let block = &decoded.payload[0];
+        assert_eq!(block.range_start, 0);
+        assert_eq!(block.range_end, 0);
+        assert_eq!(block.total_size, 0);
+    }
 }
