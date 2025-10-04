@@ -25,16 +25,47 @@ Build a production-ready, high-performance Archivist Storage node with:
 
 **Phase 1: IN PROGRESS** 🚧 (Days 1-2)
 - ✅ Archivist BlockExc protocol (`/archivist/blockexc/1.0.0`)
-- ✅ Testnet connectivity (TCP + Noise + Mplex)
+- ✅ Testnet connectivity (TCP + Noise + Mplex) - **PROTOCOL STACK VERIFIED**
 - ✅ TGP (Two Generals Protocol) integration (12-13x faster than TCP)
 - ✅ Block-over-TGP (BoTG) protocol for Neverust-to-Neverust block exchange
 - ✅ BlockExc protobuf message encoding/decoding
 - ✅ Block storage (CID-based with BLAKE3 verification)
-- 🚧 Integration tests for testnet connectivity
+- ✅ Integration tests for testnet connectivity - **ALL TESTS PASSING**
+- ✅ Protocol compatibility analysis - **Archivist uses ONLY TCP+Noise+Mplex+BlockExc**
 - 🚧 REST API endpoints
 - 🚧 Health checks and metrics
 
 See [ISSUES.md](./ISSUES.md) for complete roadmap (150 issues tracked)
+
+---
+
+## Testnet Connection Behavior
+
+**IMPORTANT**: Archivist testnet nodes use a minimal protocol stack and close idle connections:
+
+### Protocol Stack (Verified Working)
+1. ✅ **TCP** - Transport with port reuse
+2. ✅ **Noise** - Encryption
+3. ✅ **Mplex** (`/mplex/6.7.0`) - Multiplexing
+4. ✅ **BlockExc** (`/archivist/blockexc/1.0.0`) - Block exchange
+
+### What Archivist Nodes Do NOT Support
+- ❌ **Ping** (`/ipfs/ping/1.0.0`) - Causes immediate connection closure
+- ❌ **Identify** - Not used, causes connection closure
+- ❌ **Kad DHT** - Not mounted
+- ❌ **Any other libp2p protocols**
+
+### Connection Lifecycle
+1. **Dial** → TCP connection established
+2. **Negotiate** → Noise + Mplex succeed
+3. **Idle** → Connection maintained briefly (~100-200ms)
+4. **Close** → Archivist closes if no BlockExc activity
+
+This is **expected behavior**. Archivist nodes only keep connections alive when actively exchanging blocks via BlockExc. For block retrieval:
+1. Dial the node
+2. Open BlockExc stream
+3. Exchange blocks
+4. Connection closes when done
 
 ---
 
