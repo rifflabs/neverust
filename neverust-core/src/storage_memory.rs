@@ -1,13 +1,12 @@
-//! RocksDB-backed persistent block storage
+//! In-memory block storage
 //!
-//! Provides CID-indexed block storage with BLAKE3 verification,
-//! persistent storage via RocksDB, and optimized configuration
-//! for content-addressed blocks (1KB - 10MB+).
+//! Provides CID-indexed block storage with BLAKE3 verification and
+//! integration with BoTG (Block-over-TGP) protocol.
 
 use cid::Cid;
-use rocksdb::{Options, WriteBatch, DB};
-use std::path::Path;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::cid_blake3::{blake3_cid, verify_blake3, CidError};
@@ -22,12 +21,6 @@ pub enum StorageError {
 
     #[error("Block already exists: {0}")]
     BlockExists(String),
-
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] rocksdb::Error),
-
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
 }
 
 /// A block with its CID and data
@@ -56,75 +49,60 @@ impl Block {
     }
 }
 
-/// RocksDB-backed persistent block storage with CID-based indexing
+/// In-memory block storage with CID-based indexing
 pub struct BlockStore {
-    /// RocksDB database handle
-    db: Arc<DB>,
+    /// Blocks indexed by CID
+    blocks: Arc<RwLock<HashMap<String, Block>>>,
+    /// Total size of all blocks
+    total_size: Arc<RwLock<usize>>,
+    /// Number of blocks
+    block_count: Arc<RwLock<usize>>,
 }
 
 impl BlockStore {
-    /// Create a new block store with in-memory backend (for testing)
+    /// Create a new empty block store
     pub fn new() -> Self {
-        // Use a temporary directory for in-memory testing
-        let temp_dir = std::env::temp_dir().join(format!("neverust-test-{}", rand::random::<u64>()));
-        Self::new_with_path(&temp_dir).expect("Failed to create test BlockStore")
-    }
-
-    /// Create a new block store with persistent RocksDB backend
-    pub fn new_with_path<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-
-        // Optimize for point lookups (CID -> block)
-        opts.set_optimize_for_point_lookup(256); // 256MB block cache
-
-        // Enable Bloom filters for fast existence checks
-        opts.set_bloom_filter(10.0, false); // 10 bits per key
-        opts.set_enable_pipelined_write(true);
-
-        // Compression - disable for already-compressed content blocks
-        opts.set_compression_type(rocksdb::DBCompressionType::None);
-
-        // Performance tuning
-        opts.increase_parallelism(num_cpus::get() as i32);
-        opts.set_max_background_jobs(4);
-
-        // Write buffer and compaction
-        opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB write buffer
-        opts.set_target_file_size_base(128 * 1024 * 1024); // 128MB SST files
-
-        let db = DB::open(&opts, path.as_ref())?;
-
-        info!("Opened RocksDB block store at {:?}", path.as_ref());
-        Ok(Self { db: Arc::new(db) })
+        Self {
+            blocks: Arc::new(RwLock::new(HashMap::new())),
+            total_size: Arc::new(RwLock::new(0)),
+            block_count: Arc::new(RwLock::new(0)),
+        }
     }
 
     /// Store a block, verifying its CID
     pub async fn put(&self, block: Block) -> Result<(), StorageError> {
         let cid_str = block.cid.to_string();
 
+        // Check if block already exists
+        {
+            let blocks = self.blocks.read().await;
+            if blocks.contains_key(&cid_str) {
+                debug!("Block already exists: {}", cid_str);
+                return Ok(()); // Not an error, block is idempotent
+            }
+        }
+
         // Verify block integrity
         verify_blake3(&block.data, &block.cid)?;
 
-        let db = Arc::clone(&self.db);
-        let key = cid_str.clone();
-        let value = block.data.clone();
+        // Store block
+        let size = block.size();
+        {
+            let mut blocks = self.blocks.write().await;
+            blocks.insert(cid_str.clone(), block);
+        }
 
-        tokio::task::spawn_blocking(move || {
-            // Check if block already exists (idempotent)
-            if db.get(&key)?.is_some() {
-                debug!("Block already exists: {}", key);
-                return Ok::<(), StorageError>(());
-            }
+        // Update metrics
+        {
+            let mut total_size = self.total_size.write().await;
+            *total_size += size;
+        }
+        {
+            let mut block_count = self.block_count.write().await;
+            *block_count += 1;
+        }
 
-            // Store block
-            db.put(&key, &value)?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
-
-        info!("Stored block {}, size: {} bytes", cid_str, block.data.len());
+        info!("Stored block {}, size: {} bytes", cid_str, size);
         Ok(())
     }
 
@@ -139,52 +117,41 @@ impl BlockStore {
     /// Retrieve a block by CID
     pub async fn get(&self, cid: &Cid) -> Result<Block, StorageError> {
         let cid_str = cid.to_string();
-        let db = Arc::clone(&self.db);
-        let key = cid_str.clone();
-        let cid_copy = *cid;
+        let blocks = self.blocks.read().await;
 
-        let data = tokio::task::spawn_blocking(move || {
-            db.get(&key)
-        })
-        .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??
-        .ok_or_else(|| StorageError::BlockNotFound(cid_str))?;
-
-        Ok(Block {
-            cid: cid_copy,
-            data,
-        })
+        blocks
+            .get(&cid_str)
+            .cloned()
+            .ok_or(StorageError::BlockNotFound(cid_str))
     }
 
     /// Check if a block exists
     pub async fn has(&self, cid: &Cid) -> bool {
         let cid_str = cid.to_string();
-        let db = Arc::clone(&self.db);
-
-        tokio::task::spawn_blocking(move || {
-            db.get(&cid_str).map(|opt| opt.is_some()).unwrap_or(false)
-        })
-        .await
-        .unwrap_or(false)
+        let blocks = self.blocks.read().await;
+        blocks.contains_key(&cid_str)
     }
 
     /// Delete a block
     pub async fn delete(&self, cid: &Cid) -> Result<(), StorageError> {
         let cid_str = cid.to_string();
-        let db = Arc::clone(&self.db);
-        let key = cid_str.clone();
 
-        tokio::task::spawn_blocking(move || {
-            // Check if block exists
-            if db.get(&key)?.is_none() {
-                return Err(StorageError::BlockNotFound(key.clone()));
-            }
+        let block = {
+            let mut blocks = self.blocks.write().await;
+            blocks
+                .remove(&cid_str)
+                .ok_or_else(|| StorageError::BlockNotFound(cid_str.clone()))?
+        };
 
-            db.delete(&key)?;
-            Ok::<(), StorageError>(())
-        })
-        .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        // Update metrics
+        {
+            let mut total_size = self.total_size.write().await;
+            *total_size -= block.size();
+        }
+        {
+            let mut block_count = self.block_count.write().await;
+            *block_count -= 1;
+        }
 
         info!("Deleted block {}", cid_str);
         Ok(())
@@ -192,74 +159,31 @@ impl BlockStore {
 
     /// Get all CIDs in the store
     pub async fn list_cids(&self) -> Vec<Cid> {
-        let db = Arc::clone(&self.db);
-
-        tokio::task::spawn_blocking(move || {
-            let mut cids = Vec::new();
-            let iter = db.iterator(rocksdb::IteratorMode::Start);
-
-            for item in iter {
-                if let Ok((key, _)) = item {
-                    if let Ok(key_str) = String::from_utf8(key.to_vec()) {
-                        if let Ok(cid) = key_str.parse::<Cid>() {
-                            cids.push(cid);
-                        }
-                    }
-                }
-            }
-
-            cids
-        })
-        .await
-        .unwrap_or_default()
+        let blocks = self.blocks.read().await;
+        blocks.values().map(|block| block.cid).collect()
     }
 
     /// Get statistics about the block store
     pub async fn stats(&self) -> BlockStoreStats {
-        let db = Arc::clone(&self.db);
+        let block_count = *self.block_count.read().await;
+        let total_size = *self.total_size.read().await;
 
-        tokio::task::spawn_blocking(move || {
-            let mut block_count = 0;
-            let mut total_size = 0;
-
-            let iter = db.iterator(rocksdb::IteratorMode::Start);
-            for item in iter {
-                if let Ok((_, value)) = item {
-                    block_count += 1;
-                    total_size += value.len();
-                }
-            }
-
-            BlockStoreStats {
-                block_count,
-                total_size,
-            }
-        })
-        .await
-        .unwrap_or(BlockStoreStats {
-            block_count: 0,
-            total_size: 0,
-        })
+        BlockStoreStats {
+            block_count,
+            total_size,
+        }
     }
 
     /// Clear all blocks
     pub async fn clear(&self) {
-        let db = Arc::clone(&self.db);
+        let mut blocks = self.blocks.write().await;
+        blocks.clear();
 
-        tokio::task::spawn_blocking(move || {
-            let mut batch = WriteBatch::default();
-            let iter = db.iterator(rocksdb::IteratorMode::Start);
+        let mut total_size = self.total_size.write().await;
+        *total_size = 0;
 
-            for item in iter {
-                if let Ok((key, _)) = item {
-                    batch.delete(&key);
-                }
-            }
-
-            let _ = db.write(batch);
-        })
-        .await
-        .ok();
+        let mut block_count = self.block_count.write().await;
+        *block_count = 0;
 
         info!("Cleared all blocks from store");
     }

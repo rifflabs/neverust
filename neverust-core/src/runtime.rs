@@ -20,9 +20,13 @@ use tracing::{error, info, warn};
 
 /// Run the Archivist node with the given configuration
 pub async fn run_node(config: Config) -> Result<(), P2PError> {
-    // Create block store
-    let block_store = Arc::new(BlockStore::new());
-    info!("Initialized block store");
+    // Create block store with persistent RocksDB backend
+    let blocks_path = config.data_dir.join("blocks");
+    let block_store = Arc::new(
+        BlockStore::new_with_path(&blocks_path)
+            .map_err(|e| P2PError::Swarm(format!("Failed to open block store: {}", e)))?
+    );
+    info!("Initialized persistent block store at {:?}", blocks_path);
 
     // Create metrics collector
     let metrics = Metrics::new();
