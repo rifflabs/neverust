@@ -113,6 +113,62 @@ impl Config {
         }
     }
 
+    /// Fetch or determine bootstrap nodes
+    ///
+    /// Priority:
+    /// 1. Check BOOTSTRAP_NODE environment variable
+    /// 2. Fall back to Archivist testnet
+    pub async fn fetch_bootstrap_nodes() -> Result<Vec<String>, ConfigError> {
+        // Check for BOOTSTRAP_NODE environment variable first
+        if let Ok(bootstrap_node) = std::env::var("BOOTSTRAP_NODE") {
+            tracing::info!("Using local bootstrap node from BOOTSTRAP_NODE env: {}", bootstrap_node);
+
+            // Parse the bootstrap node address (format: "host:port" or "ip:port")
+            // We need to fetch the peer ID from the node's API
+            let url = format!("http://{}/api/archivist/v1/peer-id", bootstrap_node);
+
+            match reqwest::get(&url).await {
+                Ok(response) => {
+                    if let Ok(peer_id) = response.text().await {
+                        let peer_id = peer_id.trim().trim_matches('"');
+                        // Extract host and port
+                        let parts: Vec<&str> = bootstrap_node.split(':').collect();
+                        if parts.len() == 2 {
+                            let host = parts[0];
+                            // Resolve hostname to IP if needed
+                            let resolved_host = if host.parse::<std::net::IpAddr>().is_ok() {
+                                host.to_string()
+                            } else {
+                                // Try to resolve hostname to IP
+                                match tokio::net::lookup_host(format!("{}:0", host)).await {
+                                    Ok(mut addrs) => {
+                                        if let Some(addr) = addrs.next() {
+                                            addr.ip().to_string()
+                                        } else {
+                                            host.to_string()
+                                        }
+                                    }
+                                    Err(_) => host.to_string(),
+                                }
+                            };
+                            // Use port 8070 for P2P (not the API port)
+                            let multiaddr = format!("/ip4/{}/tcp/8070/p2p/{}", resolved_host, peer_id);
+                            tracing::info!("Resolved local bootstrap multiaddr: {}", multiaddr);
+                            return Ok(vec![multiaddr]);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to fetch peer ID from bootstrap node {}: {}", bootstrap_node, e);
+                }
+            }
+        }
+
+        // Fall back to Archivist testnet bootstrap nodes
+        tracing::info!("Falling back to Archivist testnet bootstrap nodes");
+        Self::fetch_testnet_bootstrap_nodes().await
+    }
+
     /// Fetch bootstrap nodes from Archivist testnet
     pub async fn fetch_testnet_bootstrap_nodes() -> Result<Vec<String>, ConfigError> {
         use crate::spr::parse_spr_records;
