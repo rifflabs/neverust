@@ -17,18 +17,18 @@ Build a production-ready, high-performance Archivist Storage node with:
 
 **Phase 0: COMPLETE** ✅ (Completed 2025-10-03)
 - Working P2P node with libp2p
-- TCP transport with Noise encryption + Yamux multiplexing
-- Ping + Identify protocols operational
+- TCP transport with Noise encryption + Mplex multiplexing
+- Ping + BlockExc protocols operational
 - CLI with configuration options
 - Structured logging with tracing
 - All tests passing
 
 **Phase 1: IN PROGRESS** 🚧 (Days 1-2)
-- ✅ Kademlia DHT integration
-- ✅ Gossipsub pub-sub protocol
-- ✅ Archivist protocol compatibility (`/archivist/1.0.0`)
-- ✅ Subscribed to `blocks` and `transactions` topics
-- ⚠️ Bootstrap node connectivity (testnet node appears offline/firewalled)
+- ✅ Archivist BlockExc protocol (`/archivist/blockexc/1.0.0`)
+- ✅ Testnet connectivity (TCP + Noise + Mplex)
+- ✅ TGP (Temporal Graph Protocol) integration (12-13x faster than TCP)
+- ✅ Block-over-TGP (BoTG) protocol for Neverust-to-Neverust block exchange
+- 🚧 BlockExc protobuf message encoding/decoding
 - 🚧 Block storage (CID-based)
 - 🚧 REST API endpoints
 - 🚧 Health checks and metrics
@@ -268,6 +268,53 @@ INFO neverust_core::runtime: Listening on TCP port 8070
 INFO neverust_core::runtime: Listening on /ip4/127.0.0.1/tcp/8070
 INFO neverust_core::runtime: Listening on /ip4/10.7.1.193/tcp/8070
 ```
+
+---
+
+## Block-over-TGP (BoTG) Protocol
+
+Neverust implements a revolutionary two-layer block exchange protocol for Neverust-to-Neverust communication:
+
+### Layer 1: TGP (Temporal Graph Protocol)
+- **12-13x faster than TCP** across all packet loss scenarios
+- Linear degradation: 50% loss → 50% throughput (predictable)
+- Extreme loss tolerance: **1+ Mbps at 99% packet loss**
+- UDP-based with optimal 1200-byte MTU
+- No congestion control overhead
+
+**Performance Benchmarks** (100 Mbps target):
+- 0% loss: **99.94 Mbps** (vs TCP: 8.12 Mbps)
+- 50% loss: **49.59 Mbps** (vs TCP: 3.94 Mbps)
+- 99% loss: **1.03 Mbps** (vs TCP: 0.11 Mbps)
+
+See [pal/crates/consensus/PROTOCOL_COMPARISON.md](../pal/crates/consensus/PROTOCOL_COMPARISON.md) for full benchmarks.
+
+### Layer 2: BoTG (Block-over-TGP)
+- **Rollup-based block exchange** (replaces individual WantLists)
+- **Instant convergence** even under extreme packet loss
+- Batch transfers with priority queuing
+- CID-based block addressing
+- Fault-tolerant design leveraging TGP's reliability
+
+**Architecture**:
+```rust
+// Traditional BlockExc: Request blocks individually
+WantList { blocks: [CID1, CID2, CID3, ...] }
+
+// BoTG: Request blocks in rollups with priorities
+BlockRollup {
+    id: 12345,
+    blocks: [CID1, CID2, CID3, ...], // Batch of 1000 blocks
+    total_size: 100MB,
+    priority: 255,
+}
+```
+
+**Benefits**:
+- **Speed**: 12-13x faster than TCP-based BlockExc
+- **Efficiency**: Batch transfers reduce protocol overhead
+- **Reliability**: Works even at 99% packet loss
+- **Predictability**: Linear throughput degradation for capacity planning
 
 ---
 

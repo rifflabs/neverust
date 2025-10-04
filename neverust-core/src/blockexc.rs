@@ -3,11 +3,10 @@
 //! Implements Archivist's custom BlockExc protocol for block exchange.
 //! Protocol ID: /archivist/blockexc/1.0.0
 
-use futures::prelude::*;
-use libp2p::core::upgrade::{ReadyUpgrade};
+use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::{
     ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol,
-    Stream, StreamProtocol, handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
+    StreamProtocol, handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
 };
 use libp2p::PeerId;
 use std::io;
@@ -19,6 +18,10 @@ pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
 pub struct BlockExcHandler {
     peer_id: PeerId,
     keep_alive: KeepAlive,
+    /// Whether we've requested an outbound stream
+    outbound_requested: bool,
+    /// Whether we have an active stream (inbound or outbound)
+    has_active_stream: bool,
 }
 
 impl BlockExcHandler {
@@ -26,6 +29,8 @@ impl BlockExcHandler {
         BlockExcHandler {
             peer_id,
             keep_alive: KeepAlive::Yes,
+            outbound_requested: false,
+            has_active_stream: false,
         }
     }
 }
@@ -63,6 +68,20 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
+        // If we don't have an active stream and haven't requested one, request an outbound stream
+        if !self.has_active_stream && !self.outbound_requested {
+            info!("BlockExc: Requesting outbound stream to {}", self.peer_id);
+            self.outbound_requested = true;
+            return std::task::Poll::Ready(
+                ConnectionHandlerEvent::OutboundSubstreamRequest {
+                    protocol: SubstreamProtocol::new(
+                        ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
+                        ()
+                    ),
+                }
+            );
+        }
+
         std::task::Poll::Pending
     }
 
@@ -80,13 +99,13 @@ impl ConnectionHandler for BlockExcHandler {
                 protocol: stream,
                 ..
             }) => {
+                self.has_active_stream = true;
                 let peer_id = self.peer_id;
                 info!("BlockExc: Fully negotiated inbound stream from {}", peer_id);
 
                 // Spawn task to handle the stream - keep it alive and read any messages
                 tokio::spawn(async move {
                     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
-                    use futures::AsyncReadExt;
 
                     let mut stream = stream;
                     info!("BlockExc: Started reading from {}", peer_id);
@@ -117,10 +136,44 @@ impl ConnectionHandler for BlockExcHandler {
                 });
             }
             ConnectionEvent::FullyNegotiatedOutbound(FullyNegotiatedOutbound {
-                protocol: _stream,
+                protocol: stream,
                 ..
             }) => {
-                info!("BlockExc: Fully negotiated outbound stream to {}", self.peer_id);
+                self.has_active_stream = true;
+                let peer_id = self.peer_id;
+                info!("BlockExc: Fully negotiated outbound stream to {}", peer_id);
+
+                // Spawn task to handle outbound stream - send initial hello message
+                tokio::spawn(async move {
+                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
+
+                    let mut stream = stream;
+                    info!("BlockExc: Sending initial hello to {}", peer_id);
+
+                    // Send empty hello message to initiate protocol
+                    let hello: Vec<u8> = vec![];
+                    if let Err(e) = write_length_prefixed(&mut stream, &hello).await {
+                        warn!("BlockExc: Failed to send hello to {}: {}", peer_id, e);
+                        return;
+                    }
+
+                    // Listen for responses
+                    loop {
+                        match read_length_prefixed(&mut stream, 100 * 1024 * 1024).await {
+                            Ok(data) => {
+                                info!("BlockExc: Received {} bytes from {} on outbound stream", data.len(), peer_id);
+                            }
+                            Err(e) => {
+                                if e.kind() != io::ErrorKind::UnexpectedEof {
+                                    warn!("BlockExc: Error reading from {} on outbound: {}", peer_id, e);
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    info!("BlockExc: Finished outbound stream to {}", peer_id);
+                });
             }
             ConnectionEvent::DialUpgradeError(err) => {
                 warn!("BlockExc: Dial upgrade error to {}: {:?}", self.peer_id, err);
