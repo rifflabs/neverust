@@ -34,7 +34,7 @@ pub struct Behaviour {
 }
 
 /// Create a new P2P swarm with default configuration
-pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Result<Swarm<Behaviour>, P2PError> {
+pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: crate::metrics::Metrics) -> Result<Swarm<Behaviour>, P2PError> {
     // Generate keypair for this node
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
@@ -43,7 +43,7 @@ pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_
 
     // Create behavior: ONLY BlockExc (Archivist nodes don't use Ping or Identify)
     let behaviour = Behaviour {
-        blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte),
+        blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics),
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
