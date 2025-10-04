@@ -1,0 +1,2071 @@
+version: '3.8'
+services:
+  bootstrap:
+    build: ..
+    container_name: neverust-bootstrap
+    hostname: bootstrap
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.0.10
+    ports:
+      - 9080:8080
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  node1:
+    build: ..
+    container_name: neverust-node1
+    hostname: node1
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.2
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9081:8080
+
+  node2:
+    build: ..
+    container_name: neverust-node2
+    hostname: node2
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.3
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9082:8080
+
+  node3:
+    build: ..
+    container_name: neverust-node3
+    hostname: node3
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.4
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9083:8080
+
+  node4:
+    build: ..
+    container_name: neverust-node4
+    hostname: node4
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.5
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9084:8080
+
+  node5:
+    build: ..
+    container_name: neverust-node5
+    hostname: node5
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.6
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9085:8080
+
+  node6:
+    build: ..
+    container_name: neverust-node6
+    hostname: node6
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.7
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9086:8080
+
+  node7:
+    build: ..
+    container_name: neverust-node7
+    hostname: node7
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.8
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9087:8080
+
+  node8:
+    build: ..
+    container_name: neverust-node8
+    hostname: node8
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.9
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9088:8080
+
+  node9:
+    build: ..
+    container_name: neverust-node9
+    hostname: node9
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.10
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 9089:8080
+
+  node10:
+    build: ..
+    container_name: neverust-node10
+    hostname: node10
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.11
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node11:
+    build: ..
+    container_name: neverust-node11
+    hostname: node11
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.12
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node12:
+    build: ..
+    container_name: neverust-node12
+    hostname: node12
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.13
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node13:
+    build: ..
+    container_name: neverust-node13
+    hostname: node13
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.14
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node14:
+    build: ..
+    container_name: neverust-node14
+    hostname: node14
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.15
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node15:
+    build: ..
+    container_name: neverust-node15
+    hostname: node15
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.16
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node16:
+    build: ..
+    container_name: neverust-node16
+    hostname: node16
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.17
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node17:
+    build: ..
+    container_name: neverust-node17
+    hostname: node17
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.18
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node18:
+    build: ..
+    container_name: neverust-node18
+    hostname: node18
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.19
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node19:
+    build: ..
+    container_name: neverust-node19
+    hostname: node19
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.20
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node20:
+    build: ..
+    container_name: neverust-node20
+    hostname: node20
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.21
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node21:
+    build: ..
+    container_name: neverust-node21
+    hostname: node21
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.22
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node22:
+    build: ..
+    container_name: neverust-node22
+    hostname: node22
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.23
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node23:
+    build: ..
+    container_name: neverust-node23
+    hostname: node23
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.24
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node24:
+    build: ..
+    container_name: neverust-node24
+    hostname: node24
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.25
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node25:
+    build: ..
+    container_name: neverust-node25
+    hostname: node25
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.26
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node26:
+    build: ..
+    container_name: neverust-node26
+    hostname: node26
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.27
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node27:
+    build: ..
+    container_name: neverust-node27
+    hostname: node27
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.28
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node28:
+    build: ..
+    container_name: neverust-node28
+    hostname: node28
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.29
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node29:
+    build: ..
+    container_name: neverust-node29
+    hostname: node29
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.30
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node30:
+    build: ..
+    container_name: neverust-node30
+    hostname: node30
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.31
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node31:
+    build: ..
+    container_name: neverust-node31
+    hostname: node31
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.32
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node32:
+    build: ..
+    container_name: neverust-node32
+    hostname: node32
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.33
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node33:
+    build: ..
+    container_name: neverust-node33
+    hostname: node33
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.34
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node34:
+    build: ..
+    container_name: neverust-node34
+    hostname: node34
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.35
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node35:
+    build: ..
+    container_name: neverust-node35
+    hostname: node35
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.36
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node36:
+    build: ..
+    container_name: neverust-node36
+    hostname: node36
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.37
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node37:
+    build: ..
+    container_name: neverust-node37
+    hostname: node37
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.38
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node38:
+    build: ..
+    container_name: neverust-node38
+    hostname: node38
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.39
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node39:
+    build: ..
+    container_name: neverust-node39
+    hostname: node39
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.40
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node40:
+    build: ..
+    container_name: neverust-node40
+    hostname: node40
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.41
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node41:
+    build: ..
+    container_name: neverust-node41
+    hostname: node41
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.42
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node42:
+    build: ..
+    container_name: neverust-node42
+    hostname: node42
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.43
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node43:
+    build: ..
+    container_name: neverust-node43
+    hostname: node43
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.44
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node44:
+    build: ..
+    container_name: neverust-node44
+    hostname: node44
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.45
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node45:
+    build: ..
+    container_name: neverust-node45
+    hostname: node45
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.46
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node46:
+    build: ..
+    container_name: neverust-node46
+    hostname: node46
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.47
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node47:
+    build: ..
+    container_name: neverust-node47
+    hostname: node47
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.48
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node48:
+    build: ..
+    container_name: neverust-node48
+    hostname: node48
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.49
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  node49:
+    build: ..
+    container_name: neverust-node49
+    hostname: node49
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.50
+    depends_on:
+      - bootstrap
+    command:
+      - start
+      - --mode
+      - altruistic
+      - --listen-port
+      - '8070'
+      - --disc-port
+      - '8090'
+      - --api-port
+      - '8080'
+      - --data-dir
+      - /data
+      - --log-level
+      - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1048576"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+      - neverust-net
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.enable-lifecycle
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - neverust-net
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: neverust
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    depends_on:
+      - prometheus
+  visualizer:
+    build: ./visualizer
+    container_name: neverust-viz
+    networks:
+      - neverust-net
+    ports:
+      - 8888:8888
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      NUM_NODES: '50'
+    depends_on:
+      - prometheus
+networks:
+  neverust-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+volumes:
+  prometheus-data: {}
+  grafana-data: {}

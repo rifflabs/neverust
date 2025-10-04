@@ -1,0 +1,215 @@
+version: '3.8'
+services:
+  bootstrap:
+    build: ..
+    container_name: neverust-bootstrap
+    hostname: bootstrap
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.0.10
+    ports:
+    - 9080:8080
+    command:
+    - start
+    - --mode
+    - altruistic
+    - --listen-port
+    - '8070'
+    - --disc-port
+    - '8090'
+    - --api-port
+    - '8080'
+    - --data-dir
+    - /data
+    - --log-level
+    - info
+    environment:
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1m"
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 5s
+      timeout: 3s
+      retries: 3
+  node1:
+    build: ..
+    container_name: neverust-node1
+    hostname: node1
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.2
+    depends_on:
+    - bootstrap
+    command:
+    - start
+    - --mode
+    - altruistic
+    - --listen-port
+    - '8070'
+    - --disc-port
+    - '8090'
+    - --api-port
+    - '8080'
+    - --data-dir
+    - /data
+    - --log-level
+    - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1m"
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+    - 9081:8080
+  node2:
+    build: ..
+    container_name: neverust-node2
+    hostname: node2
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.3
+    depends_on:
+    - bootstrap
+    command:
+    - start
+    - --mode
+    - altruistic
+    - --listen-port
+    - '8070'
+    - --disc-port
+    - '8090'
+    - --api-port
+    - '8080'
+    - --data-dir
+    - /data
+    - --log-level
+    - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1m"
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+    - 9082:8080
+  node3:
+    build: ..
+    container_name: neverust-node3
+    hostname: node3
+    networks:
+      neverust-net:
+        ipv4_address: 172.25.1.4
+    depends_on:
+    - bootstrap
+    command:
+    - start
+    - --mode
+    - marketplace
+    - --listen-port
+    - '8070'
+    - --disc-port
+    - '8090'
+    - --api-port
+    - '8080'
+    - --data-dir
+    - /data
+    - --log-level
+    - warn
+    environment:
+      BOOTSTRAP_NODE: bootstrap:8080
+      ENABLE_TRAFFIC_GEN: "true"
+      TRAFFIC_UPLOAD_RATE: "10"
+      TRAFFIC_REQUEST_RATE: "20"
+      TRAFFIC_BLOCK_SIZE: "1m"
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    ports:
+    - 9083:8080
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+    - neverust-net
+    ports:
+    - 9090:9090
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    - prometheus-data:/prometheus
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    - --web.console.libraries=/usr/share/prometheus/console_libraries
+    - --web.console.templates=/usr/share/prometheus/consoles
+    - --web.enable-lifecycle
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+    - neverust-net
+    ports:
+    - 3000:3000
+    volumes:
+    - grafana-data:/var/lib/grafana
+    - ./grafana/provisioning:/etc/grafana/provisioning
+    - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: neverust
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    depends_on:
+    - prometheus
+  visualizer:
+    build: ./visualizer
+    container_name: neverust-viz
+    networks:
+    - neverust-net
+    ports:
+    - 8888:8888
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      NUM_NODES: '3'
+    depends_on:
+    - prometheus
+networks:
+  neverust-net:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.25.0.0/16
+volumes:
+  prometheus-data: {}
+  grafana-data: {}

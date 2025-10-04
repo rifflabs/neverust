@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neverust Network Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        #header {
+            background: #141b2d;
+            padding: 15px 30px;
+            border-bottom: 2px solid #1e88e5;
+        }
+        #header h1 {
+            color: #1e88e5;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        #stats {
+            display: flex;
+            gap: 30px;
+            font-size: 14px;
+        }
+        .stat { display: flex; align-items: center; gap: 8px; position: relative; }
+        .stat-value { font-weight: bold; color: #1e88e5; font-size: 18px; }
+        .sparkline {
+            position: absolute;
+            bottom: -20px;
+            left: 0;
+            width: 100%;
+            height: 15px;
+            opacity: 0.3;
+        }
+        .sparkline path {
+            fill: none;
+            stroke: #1e88e5;
+            stroke-width: 1.5px;
+        }
+        #visualization {
+            width: 100vw;
+            height: calc(100vh - 100px);
+        }
+        .node circle {
+            stroke: #fff;
+            stroke-width: 2px;
+            cursor: pointer;
+        }
+        .node.bootstrap circle { fill: #ff6b35; }
+        .node.altruistic circle { fill: #1e88e5; }
+        .node.marketplace circle { fill: #7c4dff; }
+        .node text {
+            font-size: 10px;
+            fill: #e0e0e0;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        .link {
+            stroke: #444;
+            stroke-opacity: 0.6;
+            stroke-width: 1px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(20, 27, 45, 0.95);
+            border: 1px solid #1e88e5;
+            border-radius: 4px;
+            padding: 10px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .legend {
+            position: absolute;
+            top: 120px;
+            right: 20px;
+            background: rgba(20, 27, 45, 0.9);
+            border: 1px solid #1e88e5;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🚀 Neverust Network Visualizer</h1>
+        <div id="stats">
+            <div class="stat">
+                <span>Nodes:</span>
+                <span class="stat-value" id="node-count">0/{{ num_nodes + 1 }}</span>
+            </div>
+            <div class="stat">
+                <span>Total Blocks:</span>
+                <span class="stat-value" id="block-count">0</span>
+            </div>
+            <div class="stat">
+                <span>Total Data:</span>
+                <span class="stat-value" id="data-size">0 B</span>
+            </div>
+            <div class="stat">
+                <span>Global Cluster Transfer Rate:</span>
+                <span class="stat-value" id="transfer-rate">0 B/s</span>
+                <svg class="sparkline" id="transfer-rate-sparkline"></svg>
+            </div>
+        </div>
+    </div>
+
+    <svg id="visualization"></svg>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff6b35;"></div>
+            <span>Bootstrap</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #1e88e5;"></div>
+            <span>Altruistic</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #7c4dff;"></div>
+            <span>Marketplace</span>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        const width = window.innerWidth;
+        const height = window.innerHeight - 100;
+
+        const svg = d3.select("#visualization")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height]);
+
+        const simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collision", d3.forceCollide().radius(30));
+
+        let link = svg.append("g").selectAll(".link");
+        let node = svg.append("g").selectAll(".node");
+
+        const tooltip = d3.select("#tooltip");
+
+        // Transfer rate tracking
+        let transferRateHistory = [];
+        let lastTotalBytes = 0;
+        let lastUpdateTime = Date.now();
+        const SPARKLINE_MAX_POINTS = 30;
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function updateSparkline(data) {
+            const svg = d3.select("#transfer-rate-sparkline");
+            const width = 150;
+            const height = 15;
+
+            const x = d3.scaleLinear()
+                .domain([0, data.length - 1])
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data) || 1])
+                .range([height, 0]);
+
+            const line = d3.line()
+                .x((d, i) => x(i))
+                .y(d => y(d))
+                .curve(d3.curveMonotoneX);
+
+            svg.selectAll("*").remove();
+            svg.attr("width", width).attr("height", height);
+            svg.append("path")
+                .datum(data)
+                .attr("d", line);
+        }
+
+        function updateVisualization(data) {
+            const { nodes, links } = data.topology;
+
+            // Update links
+            link = link.data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+            link.exit().remove();
+            link = link.enter().append("line")
+                .attr("class", "link")
+                .merge(link);
+
+            // Update nodes
+            node = node.data(nodes, d => d.id);
+            node.exit().remove();
+
+            const nodeEnter = node.enter().append("g")
+                .attr("class", d => `node ${d.type}`)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            nodeEnter.append("circle")
+                .attr("r", d => d.type === 'bootstrap' ? 20 : 12);
+
+            nodeEnter.append("text")
+                .attr("dy", 25)
+                .text(d => d.name);
+
+            node = nodeEnter.merge(node);
+
+            // Tooltips
+            node.on("mouseover", function(event, d) {
+                tooltip.style("opacity", 1)
+                    .html(`
+                        <strong>${d.name}</strong><br/>
+                        Type: ${d.type}<br/>
+                        Blocks: ${d.block_count}<br/>
+                        Data: ${formatBytes(d.block_bytes)}
+                    `)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 10) + "px");
+            })
+            .on("mouseout", function() {
+                tooltip.style("opacity", 0);
+            });
+
+            simulation.nodes(nodes);
+            simulation.force("link").links(links);
+            simulation.alpha(0.3).restart();
+        }
+
+        function updateStats(stats) {
+            if (stats.active_nodes !== undefined) {
+                document.getElementById('node-count').textContent =
+                    `${stats.active_nodes}/${stats.total_nodes}`;
+            }
+            if (stats.total_blocks !== undefined) {
+                document.getElementById('block-count').textContent = stats.total_blocks;
+            }
+            if (stats.total_bytes !== undefined) {
+                document.getElementById('data-size').textContent = formatBytes(stats.total_bytes);
+
+                // Calculate transfer rate
+                const now = Date.now();
+                const timeDelta = (now - lastUpdateTime) / 1000; // seconds
+                const bytesDelta = stats.total_bytes - lastTotalBytes;
+
+                if (timeDelta > 0) {
+                    const transferRate = bytesDelta / timeDelta;
+                    document.getElementById('transfer-rate').textContent = formatBytes(transferRate) + '/s';
+
+                    // Update sparkline history
+                    transferRateHistory.push(transferRate);
+                    if (transferRateHistory.length > SPARKLINE_MAX_POINTS) {
+                        transferRateHistory.shift();
+                    }
+                    updateSparkline(transferRateHistory);
+
+                    lastTotalBytes = stats.total_bytes;
+                    lastUpdateTime = now;
+                }
+            }
+        }
+
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
+
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
+
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }
+
+        socket.on('metrics_update', (data) => {
+            updateVisualization(data);
+            updateStats(data.stats);
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to visualizer');
+        });
+    </script>
+</body>
+</html>

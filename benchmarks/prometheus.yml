@@ -1,0 +1,68 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Bootstrap node
+  - job_name: 'neverust-bootstrap'
+    static_configs:
+      - targets: ['bootstrap:8080']
+        labels:
+          node_type: 'bootstrap'
+          node_id: '0'
+
+  # All 50 worker nodes
+  - job_name: 'neverust-workers'
+    static_configs:
+      - targets:
+          - 'node1:8080'
+          - 'node2:8080'
+          - 'node3:8080'
+          - 'node4:8080'
+          - 'node5:8080'
+          - 'node6:8080'
+          - 'node7:8080'
+          - 'node8:8080'
+          - 'node9:8080'
+          - 'node10:8080'
+          - 'node11:8080'
+          - 'node12:8080'
+          - 'node13:8080'
+          - 'node14:8080'
+          - 'node15:8080'
+          - 'node16:8080'
+          - 'node17:8080'
+          - 'node18:8080'
+          - 'node19:8080'
+          - 'node20:8080'
+          - 'node21:8080'
+          - 'node22:8080'
+          - 'node23:8080'
+          - 'node24:8080'
+          - 'node25:8080'
+          - 'node26:8080'
+          - 'node27:8080'
+          - 'node28:8080'
+          - 'node29:8080'
+          - 'node30:8080'
+          - 'node31:8080'
+          - 'node32:8080'
+          - 'node33:8080'
+          - 'node34:8080'
+          - 'node35:8080'
+          - 'node36:8080'
+          - 'node37:8080'
+          - 'node38:8080'
+          - 'node39:8080'
+          - 'node40:8080'
+          - 'node41:8080'
+          - 'node42:8080'
+          - 'node43:8080'
+          - 'node44:8080'
+          - 'node45:8080'
+          - 'node46:8080'
+          - 'node47:8080'
+          - 'node48:8080'
+          - 'node49:8080'
+        labels:
+          node_type: 'worker'
