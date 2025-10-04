@@ -13,6 +13,7 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 toml = "0.8"
 futures = "0.3"
 void = "1"
@@ -25,6 +26,10 @@ blake3 = "1.5"
 multihash = "0.19"
 cid = "0.11"
 unsigned-varint = "0.8"
+axum = "0.7"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+bytes = "1.5"
 
 # TGP (Two Generals Protocol) for Block-over-TGP (BoTG)
 consensus-tgp = { path = "../crates/tgp" }

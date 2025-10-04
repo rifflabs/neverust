@@ -108,15 +108,20 @@ impl BoTgProtocol {
             local_id: self.config.local_peer_id,
             peer_id,
             mtu: self.config.mtu,
+            target_mbps: 100, // Default 100 Mbps target
         };
 
-        // Create TGP handle
-        let handle = TgpHandle { cfg: tgp_config };
+        // TODO: Create TGP handle with actual transport and peer address
+        // This requires:
+        // 1. TransportHandle (UDP socket)
+        // 2. Peer SocketAddr (extracted from multiaddr)
+        // For now, just track the config
+        // let handle = TgpHandle::new(tgp_config, transport, peer_addr);
 
-        // Store handle
-        self.handles.write().await.insert(peer_id, handle);
+        // Store config for future use when transport is wired up
+        // self.handles.write().await.insert(peer_id, handle);
 
-        info!("BoTG: Created TGP handle for peer {}", peer_id);
+        info!("BoTG: TGP config created for peer {} (transport integration pending)", peer_id);
         Ok(())
     }
 

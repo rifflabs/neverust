@@ -3,18 +3,35 @@
 //! Handles the main event loop, processing Swarm events and managing
 //! the lifecycle of the P2P node.
 
-use crate::{config::Config, p2p::{create_swarm, P2PError}};
+use crate::{api, config::Config, p2p::{create_swarm, P2PError}, storage::BlockStore};
 use futures::StreamExt;
 use libp2p::{
     swarm::SwarmEvent, Multiaddr,
 };
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
 
 /// Run the Archivist node with the given configuration
 pub async fn run_node(config: Config) -> Result<(), P2PError> {
-    // Create swarm
-    let mut swarm = create_swarm().await?;
+    // Create block store
+    let block_store = Arc::new(BlockStore::new());
+    info!("Initialized block store");
+
+    // Start REST API server in background
+    let api_block_store = block_store.clone();
+    let api_port = config.api_port;
+    tokio::spawn(async move {
+        let app = api::create_router(api_block_store);
+        let addr = format!("0.0.0.0:{}", api_port);
+        info!("Starting REST API on {}", addr);
+
+        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    // Create swarm with block store and operating mode
+    let mut swarm = create_swarm(block_store, config.mode.clone(), config.price_per_byte).await?;
 
     // Start listening on TCP
     let tcp_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", config.listen_port)

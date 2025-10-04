@@ -48,6 +48,18 @@ pub struct StartCommand {
     #[arg(long, default_value_t = 8090)]
     pub disc_port: u16,
 
+    /// HTTP port for REST API
+    #[arg(long, default_value_t = 8080)]
+    pub api_port: u16,
+
+    /// Node operating mode: altruistic (free blocks) or marketplace (paid blocks)
+    #[arg(long, default_value = "altruistic")]
+    pub mode: String,
+
+    /// Price per byte in marketplace mode (in smallest currency unit)
+    #[arg(long, default_value_t = 1)]
+    pub price_per_byte: u64,
+
     /// Logging level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     pub log_level: String,
@@ -62,9 +74,12 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub listen_port: u16,
     pub disc_port: u16,
+    pub api_port: u16,
     pub log_level: String,
     #[serde(default)]
     pub bootstrap_nodes: Vec<String>,
+    pub mode: String,
+    pub price_per_byte: u64,
 }
 
 impl Config {
@@ -90,8 +105,11 @@ impl Config {
             data_dir: PathBuf::from("./data"),
             listen_port: 8070,
             disc_port: 8090,
+            api_port: 8080,
             log_level: "info".to_string(),
             bootstrap_nodes: Vec::new(),
+            mode: "altruistic".to_string(),
+            price_per_byte: 1,
         }
     }
 
@@ -142,8 +160,11 @@ impl From<StartCommand> for Config {
             data_dir: cmd.data_dir,
             listen_port: cmd.listen_port,
             disc_port: cmd.disc_port,
+            api_port: cmd.api_port,
             log_level: cmd.log_level,
             bootstrap_nodes: cmd.bootstrap_node,
+            mode: cmd.mode,
+            price_per_byte: cmd.price_per_byte,
         }
     }
 }
@@ -167,6 +188,9 @@ mod tests {
             data_dir: PathBuf::from("./test-data"),
             listen_port: 9000,
             disc_port: 9001,
+            api_port: 9002,
+            mode: "marketplace".to_string(),
+            price_per_byte: 100,
             log_level: "debug".to_string(),
             bootstrap_node: vec!["/ip4/1.2.3.4/tcp/8070/p2p/12D3KooTest".to_string()],
         };
@@ -175,6 +199,9 @@ mod tests {
         assert_eq!(config.data_dir, PathBuf::from("./test-data"));
         assert_eq!(config.listen_port, 9000);
         assert_eq!(config.disc_port, 9001);
+        assert_eq!(config.api_port, 9002);
+        assert_eq!(config.mode, "marketplace");
+        assert_eq!(config.price_per_byte, 100);
         assert_eq!(config.log_level, "debug");
         assert_eq!(config.bootstrap_nodes.len(), 1);
     }

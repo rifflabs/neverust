@@ -7,10 +7,12 @@ use libp2p::{
     noise, tcp, PeerId, Swarm, SwarmBuilder,
 };
 use libp2p_mplex as mplex;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::blockexc::BlockExcBehaviour;
+use crate::storage::BlockStore;
 
 #[derive(Error, Debug)]
 pub enum P2PError {
@@ -32,16 +34,16 @@ pub struct Behaviour {
 }
 
 /// Create a new P2P swarm with default configuration
-pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
+pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Result<Swarm<Behaviour>, P2PError> {
     // Generate keypair for this node
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
 
-    tracing::info!("Local peer ID: {}", peer_id);
+    tracing::info!("Local peer ID: {} (mode: {})", peer_id, mode);
 
     // Create behavior: ONLY BlockExc (Archivist nodes don't use Ping or Identify)
     let behaviour = Behaviour {
-        blockexc: BlockExcBehaviour,
+        blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte),
     };
 
     // Build swarm with TCP transport, Noise security, and Mplex multiplexing
@@ -72,13 +74,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_swarm() {
-        let swarm = create_swarm().await.unwrap();
+        let block_store = Arc::new(BlockStore::new());
+        let swarm = create_swarm(block_store, "altruistic".to_string(), 1).await.unwrap();
         assert!(swarm.local_peer_id().to_string().len() > 0);
     }
 
     #[tokio::test]
     async fn test_swarm_can_listen() {
-        let mut swarm = create_swarm().await.unwrap();
+        let block_store = Arc::new(BlockStore::new());
+        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1).await.unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let result = swarm.listen_on(addr);
         assert!(result.is_ok());

@@ -10,7 +10,10 @@ use libp2p::swarm::{
 };
 use libp2p::PeerId;
 use std::io;
+use std::sync::Arc;
 use tracing::{info, warn};
+
+use crate::storage::BlockStore;
 
 pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
 
@@ -22,15 +25,24 @@ pub struct BlockExcHandler {
     outbound_requested: bool,
     /// Whether we have an active stream (inbound or outbound)
     has_active_stream: bool,
+    /// Shared block store for reading/writing blocks
+    block_store: Arc<BlockStore>,
+    /// Node operating mode (altruistic or marketplace)
+    mode: String,
+    /// Price per byte in marketplace mode
+    price_per_byte: u64,
 }
 
 impl BlockExcHandler {
-    pub fn new(peer_id: PeerId) -> Self {
+    pub fn new(peer_id: PeerId, block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Self {
         BlockExcHandler {
             peer_id,
             keep_alive: KeepAlive::Yes,
             outbound_requested: false,
             has_active_stream: false,
+            block_store,
+            mode,
+            price_per_byte,
         }
     }
 }
@@ -68,8 +80,9 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
-        // Don't automatically request outbound streams
-        // Wait for the remote peer to dial us, or for an explicit send request
+        // DON'T request outbound streams - Archivist nodes reject client-initiated BlockExc streams
+        // They maintain server role and dial us when they have blocks or want our wantlist
+        // We only handle inbound streams from them
         std::task::Poll::Pending
     }
 
@@ -89,11 +102,16 @@ impl ConnectionHandler for BlockExcHandler {
             }) => {
                 self.has_active_stream = true;
                 let peer_id = self.peer_id;
-                info!("BlockExc: Fully negotiated inbound stream from {}", peer_id);
+                let block_store = self.block_store.clone();
+                let mode = self.mode.clone();
+                let price_per_byte = self.price_per_byte;
+                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {})", peer_id, mode);
 
-                // Spawn task to handle the stream - keep it alive and read any messages
+                // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
                     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
+                    use crate::messages::{Message, Block as MsgBlock, decode_message, encode_message};
+                    use cid::Cid;
 
                     let mut stream = stream;
                     info!("BlockExc: Started reading from {}", peer_id);
@@ -104,11 +122,71 @@ impl ConnectionHandler for BlockExcHandler {
                             Ok(data) => {
                                 info!("BlockExc: Received {} bytes from {}", data.len(), peer_id);
 
-                                // Send empty response to acknowledge
-                                let response: Vec<u8> = vec![];
-                                if let Err(e) = write_length_prefixed(&mut stream, &response).await {
-                                    warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
-                                    break;
+                                // Try to decode the message
+                                match decode_message(&data) {
+                                    Ok(msg) => {
+                                        info!("BlockExc: Decoded message from {}: wantlist={}, blocks={}, presences={}",
+                                            peer_id,
+                                            msg.wantlist.is_some(),
+                                            msg.payload.len(),
+                                            msg.block_presences.len()
+                                        );
+
+                                        // If they sent a wantlist, respond with blocks we have
+                                        if let Some(wantlist) = msg.wantlist {
+                                            // ALTRUISTIC MODE: Serve blocks freely without payment
+                                            // MARKETPLACE MODE: Check payment before serving (TODO)
+
+                                            if mode == "altruistic" {
+                                                info!("BlockExc: ALTRUISTIC MODE - serving blocks freely to {}", peer_id);
+                                                let mut response_blocks = Vec::new();
+
+                                                for entry in &wantlist.entries {
+                                                    // Parse CID from bytes
+                                                    if let Ok(cid) = Cid::try_from(&entry.block[..]) {
+                                                        // Check if we have this block
+                                                        if let Ok(block) = block_store.get(&cid).await {
+                                                            info!("BlockExc: Have block {}, sending to {} (altruistic)", cid, peer_id);
+
+                                                            // Convert to protobuf Block
+                                                            response_blocks.push(MsgBlock {
+                                                                prefix: cid.to_bytes()[0..4].to_vec(), // CID prefix
+                                                                data: block.data,
+                                                            });
+                                                        } else {
+                                                            info!("BlockExc: Don't have block {}", cid);
+                                                        }
+                                                    }
+                                                }
+
+                                                // Send response
+                                                let response = Message {
+                                                    wantlist: None,
+                                                    payload: response_blocks,
+                                                    block_presences: vec![],
+                                                    pending_bytes: 0,
+                                                    account: None,
+                                                    payment: None,
+                                                };
+
+                                                if let Ok(response_bytes) = encode_message(&response) {
+                                                    if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                        warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
+                                                        break;
+                                                    }
+                                                }
+                                            } else if mode == "marketplace" {
+                                                info!("BlockExc: MARKETPLACE MODE - payment validation not yet implemented");
+                                                // TODO: Check msg.payment for StateChannelUpdate
+                                                // TODO: Validate payment before serving blocks
+                                            } else {
+                                                warn!("BlockExc: Unknown mode '{}', defaulting to altruistic", mode);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("BlockExc: Failed to decode message from {}: {}", peer_id, e);
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -129,38 +207,109 @@ impl ConnectionHandler for BlockExcHandler {
             }) => {
                 self.has_active_stream = true;
                 let peer_id = self.peer_id;
+                let block_store = self.block_store.clone();
                 info!("BlockExc: Fully negotiated outbound stream to {}", peer_id);
 
-                // Spawn task to handle outbound stream - send initial hello message
+                // Spawn task to handle outbound stream - send WantList and receive blocks
                 tokio::spawn(async move {
                     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
-                    use crate::messages::{Message, encode_message};
+                    use crate::messages::{Message, Wantlist, WantlistEntry, WantType, decode_message, encode_message};
+                    use crate::cid_blake3::blake3_cid;
+                    use crate::storage::Block;
+                    use cid::Cid;
 
                     let mut stream = stream;
 
-                    // Send empty protobuf Message to initiate protocol
-                    // The Archivist node expects a valid protobuf Message, not an empty Vec
-                    let hello = Message::default();
-                    let hello_bytes = match encode_message(&hello) {
+                    // Create a test CID - let's hash "Hello, Archivist!" and request that block
+                    let test_data = b"Hello, Archivist!";
+                    let test_cid = blake3_cid(test_data).expect("Failed to create test CID");
+
+                    info!("BlockExc: Requesting test block {} from {}", test_cid, peer_id);
+
+                    // Create WantList with test CID
+                    let wantlist = Wantlist {
+                        entries: vec![WantlistEntry {
+                            block: test_cid.to_bytes(),
+                            priority: 1,
+                            cancel: false,
+                            want_type: WantType::WantBlock as i32,
+                            send_dont_have: true,
+                        }],
+                        full: true,
+                    };
+
+                    let msg = Message {
+                        wantlist: Some(wantlist),
+                        payload: vec![],
+                        block_presences: vec![],
+                        pending_bytes: 0,
+                        account: None,
+                        payment: None,
+                    };
+
+                    let msg_bytes = match encode_message(&msg) {
                         Ok(bytes) => bytes,
                         Err(e) => {
-                            warn!("BlockExc: Failed to encode hello message: {}", e);
+                            warn!("BlockExc: Failed to encode WantList: {}", e);
                             return;
                         }
                     };
 
-                    info!("BlockExc: Sending {} byte hello message to {}", hello_bytes.len(), peer_id);
-                    if let Err(e) = write_length_prefixed(&mut stream, &hello_bytes).await {
-                        warn!("BlockExc: Failed to send hello to {}: {}", peer_id, e);
+                    info!("BlockExc: Sending WantList ({} bytes) to {}", msg_bytes.len(), peer_id);
+                    if let Err(e) = write_length_prefixed(&mut stream, &msg_bytes).await {
+                        warn!("BlockExc: Failed to send WantList to {}: {}", peer_id, e);
                         return;
                     }
-                    info!("BlockExc: Successfully sent hello to {}", peer_id);
 
-                    // Listen for responses
+                    // Listen for responses (blocks or presences)
                     loop {
                         match read_length_prefixed(&mut stream, 100 * 1024 * 1024).await {
                             Ok(data) => {
                                 info!("BlockExc: Received {} bytes from {} on outbound stream", data.len(), peer_id);
+
+                                match decode_message(&data) {
+                                    Ok(response) => {
+                                        info!("BlockExc: Response from {}: blocks={}, presences={}",
+                                            peer_id, response.payload.len(), response.block_presences.len());
+
+                                        // Store received blocks
+                                        for msg_block in &response.payload {
+                                            info!("BlockExc: Received block! prefix_len={}, data_len={}",
+                                                msg_block.prefix.len(), msg_block.data.len());
+
+                                            // Compute CID from data and verify
+                                            match blake3_cid(&msg_block.data) {
+                                                Ok(computed_cid) => {
+                                                    // Create Block and store it
+                                                    let block = Block {
+                                                        cid: computed_cid,
+                                                        data: msg_block.data.clone(),
+                                                    };
+
+                                                    match block_store.put(block).await {
+                                                        Ok(_) => {
+                                                            info!("BlockExc: Stored block {} from {}", computed_cid, peer_id);
+                                                        }
+                                                        Err(e) => {
+                                                            warn!("BlockExc: Failed to store block: {}", e);
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    warn!("BlockExc: Failed to compute CID for received block: {}", e);
+                                                }
+                                            }
+                                        }
+
+                                        // Log block presences
+                                        for presence in &response.block_presences {
+                                            info!("BlockExc: Block presence type={:?}", presence.r#type);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("BlockExc: Failed to decode response from {}: {}", peer_id, e);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 if e.kind() != io::ErrorKind::UnexpectedEof {
@@ -186,7 +335,17 @@ impl ConnectionHandler for BlockExcHandler {
 }
 
 /// BlockExc network behaviour
-pub struct BlockExcBehaviour;
+pub struct BlockExcBehaviour {
+    block_store: Arc<BlockStore>,
+    mode: String,
+    price_per_byte: u64,
+}
+
+impl BlockExcBehaviour {
+    pub fn new(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Self {
+        Self { block_store, mode, price_per_byte }
+    }
+}
 
 impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
     type ConnectionHandler = BlockExcHandler;
@@ -199,7 +358,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _local_addr: &libp2p::Multiaddr,
         _remote_addr: &libp2p::Multiaddr,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer))
+        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte))
     }
 
     fn handle_established_outbound_connection(
@@ -209,7 +368,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _addr: &libp2p::Multiaddr,
         _role_override: libp2p::core::Endpoint,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer))
+        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte))
     }
 
     fn on_swarm_event(&mut self, _event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {}
