@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::storage::BlockStore;
+use crate::metrics::Metrics;
 
 pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
 
@@ -31,10 +32,12 @@ pub struct BlockExcHandler {
     mode: String,
     /// Price per byte in marketplace mode
     price_per_byte: u64,
+    /// Metrics collector for tracking P2P traffic
+    metrics: Metrics,
 }
 
 impl BlockExcHandler {
-    pub fn new(peer_id: PeerId, block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Self {
+    pub fn new(peer_id: PeerId, block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: Metrics) -> Self {
         BlockExcHandler {
             peer_id,
             keep_alive: KeepAlive::Yes,
@@ -43,6 +46,7 @@ impl BlockExcHandler {
             block_store,
             mode,
             price_per_byte,
+            metrics,
         }
     }
 }
@@ -80,9 +84,20 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
-        // DON'T request outbound streams - Archivist nodes reject client-initiated BlockExc streams
-        // They maintain server role and dial us when they have blocks or want our wantlist
-        // We only handle inbound streams from them
+        // Enable outbound BlockExc streams for Neverust-to-Neverust communication
+        // For Archivist testnet compatibility, those nodes will reject client-initiated streams,
+        // but Neverust nodes accept bidirectional BlockExc
+        if !self.outbound_requested && !self.has_active_stream {
+            info!("BlockExc: Requesting outbound stream to peer {}", self.peer_id);
+            self.outbound_requested = true;
+            return std::task::Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
+                protocol: SubstreamProtocol::new(
+                    ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
+                    ()
+                )
+            });
+        }
+
         std::task::Poll::Pending
     }
 
@@ -105,6 +120,7 @@ impl ConnectionHandler for BlockExcHandler {
                 let block_store = self.block_store.clone();
                 let mode = self.mode.clone();
                 let price_per_byte = self.price_per_byte;
+                let metrics = self.metrics.clone();
                 info!("BlockExc: Fully negotiated inbound stream from {} (mode: {}, price: {} per byte)", peer_id, mode, price_per_byte);
 
                 // Spawn task to handle the stream - read messages from remote peer
@@ -144,7 +160,9 @@ impl ConnectionHandler for BlockExcHandler {
                                                 for entry in &wantlist.entries {
                                                     if let Ok(cid) = Cid::try_from(&entry.block[..]) {
                                                         if let Ok(block) = block_store.get(&cid).await {
-                                                            info!("BlockExc: Have block {}, sending to {} (altruistic)", cid, peer_id);
+                                                            let block_size = block.data.len();
+                                                            info!("BlockExc: Have block {}, sending to {} (altruistic) - {} bytes", cid, peer_id, block_size);
+                                                            metrics.block_sent(block_size); // Track P2P traffic!
                                                             response_blocks.push(MsgBlock {
                                                                 prefix: cid.to_bytes()[0..4].to_vec(),
                                                                 data: block.data,
@@ -182,7 +200,9 @@ impl ConnectionHandler for BlockExcHandler {
                                                     for entry in &wantlist.entries {
                                                         if let Ok(cid) = Cid::try_from(&entry.block[..]) {
                                                             if let Ok(block) = block_store.get(&cid).await {
-                                                                info!("BlockExc: Have block {}, sending to {} (paid)", cid, peer_id);
+                                                                let block_size = block.data.len();
+                                                                info!("BlockExc: Have block {}, sending to {} (paid) - {} bytes", cid, peer_id, block_size);
+                                                                metrics.block_sent(block_size); // Track P2P traffic!
                                                                 response_blocks.push(MsgBlock {
                                                                     prefix: cid.to_bytes()[0..4].to_vec(),
                                                                     data: block.data,
@@ -271,6 +291,7 @@ impl ConnectionHandler for BlockExcHandler {
                 self.has_active_stream = true;
                 let peer_id = self.peer_id;
                 let block_store = self.block_store.clone();
+                let metrics = self.metrics.clone();
                 info!("BlockExc: Fully negotiated outbound stream to {}", peer_id);
 
                 // Spawn task to handle outbound stream - send WantList and receive blocks
@@ -279,7 +300,7 @@ impl ConnectionHandler for BlockExcHandler {
                     use crate::messages::{Message, Wantlist, WantlistEntry, WantType, decode_message, encode_message};
                     use crate::cid_blake3::blake3_cid;
                     use crate::storage::Block;
-                    use cid::Cid;
+                    
 
                     let mut stream = stream;
 
@@ -349,9 +370,11 @@ impl ConnectionHandler for BlockExcHandler {
                                                         data: msg_block.data.clone(),
                                                     };
 
+                                                    let block_size = msg_block.data.len();
                                                     match block_store.put(block).await {
                                                         Ok(_) => {
-                                                            info!("BlockExc: Stored block {} from {}", computed_cid, peer_id);
+                                                            info!("BlockExc: Stored block {} from {} - {} bytes", computed_cid, peer_id, block_size);
+                                                            metrics.block_received(block_size); // Track P2P traffic!
                                                         }
                                                         Err(e) => {
                                                             warn!("BlockExc: Failed to store block: {}", e);
@@ -402,11 +425,12 @@ pub struct BlockExcBehaviour {
     block_store: Arc<BlockStore>,
     mode: String,
     price_per_byte: u64,
+    metrics: Metrics,
 }
 
 impl BlockExcBehaviour {
-    pub fn new(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64) -> Self {
-        Self { block_store, mode, price_per_byte }
+    pub fn new(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: Metrics) -> Self {
+        Self { block_store, mode, price_per_byte, metrics }
     }
 }
 
@@ -421,7 +445,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _local_addr: &libp2p::Multiaddr,
         _remote_addr: &libp2p::Multiaddr,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte))
+        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte, self.metrics.clone()))
     }
 
     fn handle_established_outbound_connection(
@@ -431,7 +455,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _addr: &libp2p::Multiaddr,
         _role_override: libp2p::core::Endpoint,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte))
+        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte, self.metrics.clone()))
     }
 
     fn on_swarm_event(&mut self, _event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {}

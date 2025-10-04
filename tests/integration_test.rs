@@ -3,12 +3,13 @@
 //! These tests connect to the actual Archivist testnet and verify
 //! every step of the protocol stack.
 
-use neverust_core::{create_swarm, Config};
+use neverust_core::{create_swarm, Config, BlockStore, Metrics};
 use futures_util::stream::StreamExt;
 use libp2p::{
     swarm::SwarmEvent,
     Multiaddr,
 };
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
@@ -51,7 +52,9 @@ async fn test_create_swarm_and_listen() {
 
     info!("TEST: Create swarm and start listening");
 
-    let mut swarm = create_swarm().await.expect("Failed to create swarm");
+    let block_store = Arc::new(BlockStore::new());
+    let metrics = Metrics::new();
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
     let peer_id = *swarm.local_peer_id();
 
     info!("✅ Created swarm with peer ID: {}", peer_id);
@@ -106,7 +109,9 @@ async fn test_dial_bootstrap_node() {
     info!("🎯 Target bootstrap node: {}", target_node);
 
     // Create swarm
-    let mut swarm = create_swarm().await.expect("Failed to create swarm");
+    let block_store = Arc::new(BlockStore::new());
+    let metrics = Metrics::new();
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
     info!("📝 Local peer ID: {}", local_peer_id);
 
@@ -230,7 +235,9 @@ async fn test_connect_and_verify_all_protocols() {
     info!("🎯 Target: {}", target_node);
 
     // Create swarm
-    let mut swarm = create_swarm().await.expect("Failed to create swarm");
+    let block_store = Arc::new(BlockStore::new());
+    let metrics = Metrics::new();
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
     info!("📝 Local peer: {}", swarm.local_peer_id());
 
     // Listen
@@ -374,7 +381,9 @@ async fn test_connect_to_all_bootstrap_nodes() {
         info!("========================================");
 
         // Create fresh swarm for each test
-        let mut swarm = create_swarm().await.expect("Failed to create swarm");
+        let block_store = Arc::new(BlockStore::new());
+        let metrics = Metrics::new();
+        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
 
         // Listen
         let listen_addr: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse().unwrap();
@@ -451,7 +460,9 @@ async fn test_blockexc_protocol_detailed() {
     info!("🎯 Target: {}", target_node);
 
     // Create swarm
-    let mut swarm = create_swarm().await.expect("Failed to create swarm");
+    let block_store = Arc::new(BlockStore::new());
+    let metrics = Metrics::new();
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
     info!("📝 Local peer: {}", local_peer_id);
 

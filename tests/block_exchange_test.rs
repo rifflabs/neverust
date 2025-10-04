@@ -2,7 +2,7 @@
 
 use futures_util::StreamExt;
 use libp2p::Multiaddr;
-use neverust_core::{create_swarm, BlockStore, Block};
+use neverust_core::{create_swarm, BlockStore, Block, Metrics};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -18,9 +18,13 @@ async fn test_two_nodes_exchange_blocks() -> Result<(), Box<dyn std::error::Erro
     let store1 = Arc::new(BlockStore::new());
     let store2 = Arc::new(BlockStore::new());
 
+    // Create metrics collectors
+    let metrics1 = Metrics::new();
+    let metrics2 = Metrics::new();
+
     // Create two swarms (nodes) with their block stores
-    let mut swarm1 = create_swarm(store1.clone()).await?;
-    let mut swarm2 = create_swarm(store2.clone()).await?;
+    let mut swarm1 = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1).await?;
+    let mut swarm2 = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2).await?;
 
     let peer1_id = *swarm1.local_peer_id();
     let peer2_id = *swarm2.local_peer_id();

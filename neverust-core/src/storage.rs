@@ -7,7 +7,7 @@ use cid::Cid;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::cid_blake3::{blake3_cid, verify_blake3, CidError};
 
