@@ -1,10 +1,10 @@
 //! P2P networking layer using rust-libp2p
 //!
 //! Implements the core P2P stack with TCP transport, Noise encryption,
-//! Mplex multiplexing, and Ping + Identify behaviors.
+//! Mplex multiplexing, and BlockExc protocol (matching Archivist exactly).
 
 use libp2p::{
-    noise, ping, tcp, PeerId, Swarm, SwarmBuilder,
+    noise, tcp, PeerId, Swarm, SwarmBuilder,
 };
 use libp2p_mplex as mplex;
 use std::time::Duration;
@@ -24,30 +24,11 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Network behavior with Ping and BlockExc protocols
+/// Network behavior with ONLY BlockExc protocol (matching Archivist)
 #[derive(libp2p::swarm::NetworkBehaviour)]
-#[behaviour(to_swarm = "BehaviourEvent")]
+#[behaviour(to_swarm = "()")]
 pub struct Behaviour {
-    pub ping: ping::Behaviour,
     pub blockexc: BlockExcBehaviour,
-}
-
-#[derive(Debug)]
-pub enum BehaviourEvent {
-    Ping(ping::Event),
-    BlockExc(()),
-}
-
-impl From<ping::Event> for BehaviourEvent {
-    fn from(event: ping::Event) -> Self {
-        BehaviourEvent::Ping(event)
-    }
-}
-
-impl From<()> for BehaviourEvent {
-    fn from(_: ()) -> Self {
-        BehaviourEvent::BlockExc(())
-    }
 }
 
 /// Create a new P2P swarm with default configuration
@@ -58,9 +39,8 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
 
     tracing::info!("Local peer ID: {}", peer_id);
 
-    // Create behaviors: Ping for keep-alive and BlockExc for block exchange
+    // Create behavior: ONLY BlockExc (Archivist nodes don't use Ping or Identify)
     let behaviour = Behaviour {
-        ping: ping::Behaviour::new(ping::Config::new()),
         blockexc: BlockExcBehaviour,
     };
 
@@ -77,7 +57,8 @@ pub async fn create_swarm() -> Result<Swarm<Behaviour>, P2PError> {
         .with_behaviour(|_| behaviour)
         .map_err(|e| P2PError::Swarm(e.to_string()))?
         .with_swarm_config(|c| {
-            c.with_idle_connection_timeout(Duration::from_secs(60))
+            // Match Archivist's 5-minute idle timeout
+            c.with_idle_connection_timeout(Duration::from_secs(300))
         })
         .build();
 

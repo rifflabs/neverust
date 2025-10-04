@@ -68,20 +68,8 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
-        // If we don't have an active stream and haven't requested one, request an outbound stream
-        if !self.has_active_stream && !self.outbound_requested {
-            info!("BlockExc: Requesting outbound stream to {}", self.peer_id);
-            self.outbound_requested = true;
-            return std::task::Poll::Ready(
-                ConnectionHandlerEvent::OutboundSubstreamRequest {
-                    protocol: SubstreamProtocol::new(
-                        ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
-                        ()
-                    ),
-                }
-            );
-        }
-
+        // Don't automatically request outbound streams
+        // Wait for the remote peer to dial us, or for an explicit send request
         std::task::Poll::Pending
     }
 
@@ -146,16 +134,27 @@ impl ConnectionHandler for BlockExcHandler {
                 // Spawn task to handle outbound stream - send initial hello message
                 tokio::spawn(async move {
                     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
+                    use crate::messages::{Message, encode_message};
 
                     let mut stream = stream;
-                    info!("BlockExc: Sending initial hello to {}", peer_id);
 
-                    // Send empty hello message to initiate protocol
-                    let hello: Vec<u8> = vec![];
-                    if let Err(e) = write_length_prefixed(&mut stream, &hello).await {
+                    // Send empty protobuf Message to initiate protocol
+                    // The Archivist node expects a valid protobuf Message, not an empty Vec
+                    let hello = Message::default();
+                    let hello_bytes = match encode_message(&hello) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            warn!("BlockExc: Failed to encode hello message: {}", e);
+                            return;
+                        }
+                    };
+
+                    info!("BlockExc: Sending {} byte hello message to {}", hello_bytes.len(), peer_id);
+                    if let Err(e) = write_length_prefixed(&mut stream, &hello_bytes).await {
                         warn!("BlockExc: Failed to send hello to {}: {}", peer_id, e);
                         return;
                     }
+                    info!("BlockExc: Successfully sent hello to {}", peer_id);
 
                     // Listen for responses
                     loop {

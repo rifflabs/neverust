@@ -3,7 +3,7 @@
 //! Handles the main event loop, processing Swarm events and managing
 //! the lifecycle of the P2P node.
 
-use crate::{config::Config, p2p::{create_swarm, BehaviourEvent, P2PError}};
+use crate::{config::Config, p2p::{create_swarm, P2PError}};
 use futures::StreamExt;
 use libp2p::{
     swarm::SwarmEvent, Multiaddr,
@@ -93,15 +93,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                     } => {
                         warn!("Connection closed with {}: {:?}", peer_id, cause);
                     }
-                    SwarmEvent::Behaviour(event) => {
-                        match event {
-                            BehaviourEvent::Ping(ping_event) => {
-                                info!("Ping event: {:?}", ping_event);
-                            }
-                            BehaviourEvent::BlockExc(_) => {
-                                info!("BlockExc event");
-                            }
-                        }
+                    SwarmEvent::Behaviour(_event) => {
+                        // BlockExc events (currently just () as placeholder)
+                        info!("BlockExc event");
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         info!("Incoming connection from {} on {}", send_back_addr, local_addr);
