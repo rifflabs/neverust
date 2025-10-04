@@ -76,10 +76,9 @@ impl BlockStore {
         opts.create_if_missing(true);
 
         // Optimize for point lookups (CID -> block)
-        opts.set_optimize_for_point_lookup(256); // 256MB block cache
+        opts.optimize_for_point_lookup(256); // 256MB block cache
 
-        // Enable Bloom filters for fast existence checks
-        opts.set_bloom_filter(10.0, false); // 10 bits per key
+        // Enable pipelined writes for better throughput
         opts.set_enable_pipelined_write(true);
 
         // Compression - disable for already-compressed content blocks
