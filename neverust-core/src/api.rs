@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -148,10 +148,12 @@ async fn store_block(
 }
 
 /// Retrieve a block (GET /api/v1/blocks/:cid)
+/// Supports HTTP Range headers for partial content retrieval
 async fn get_block(
     State(state): State<ApiState>,
     Path(cid_str): Path<String>,
-) -> Result<Json<GetBlockResponse>, ApiError> {
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
     info!("API: Retrieving block {}", cid_str);
 
     // Parse CID
@@ -165,13 +167,95 @@ async fn get_block(
         _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
     })?;
 
-    info!("API: Retrieved block {} ({} bytes)", cid_str, block.size());
+    let total_size = block.size();
 
-    Ok(Json(GetBlockResponse {
+    // Check for Range header (HTTP partial content request)
+    if let Some(range_header) = headers.get("range") {
+        if let Ok(range_str) = range_header.to_str() {
+            if let Some(range) = parse_range_header(range_str, total_size) {
+                let (start, end) = range;
+                let range_data = &block.data[start..end];
+
+                info!(
+                    "API: Serving range [{}, {}) of block {} ({} bytes of {})",
+                    start,
+                    end,
+                    cid_str,
+                    range_data.len(),
+                    total_size
+                );
+
+                // Return 206 Partial Content with Content-Range header
+                let response = Json(GetBlockResponse {
+                    cid: cid_str,
+                    data: base64::prelude::BASE64_STANDARD.encode(range_data),
+                    size: range_data.len(),
+                });
+
+                let mut resp = response.into_response();
+                *resp.status_mut() = StatusCode::PARTIAL_CONTENT;
+                resp.headers_mut().insert(
+                    "content-range",
+                    format!("bytes {}-{}/{}", start, end - 1, total_size)
+                        .parse()
+                        .unwrap(),
+                );
+                resp.headers_mut().insert(
+                    "accept-ranges",
+                    "bytes".parse().unwrap(),
+                );
+
+                return Ok(resp);
+            }
+        }
+    }
+
+    // No range request - return full block
+    info!("API: Retrieved full block {} ({} bytes)", cid_str, total_size);
+
+    let response = Json(GetBlockResponse {
         cid: cid_str,
         data: base64::prelude::BASE64_STANDARD.encode(&block.data),
-        size: block.size(),
-    }))
+        size: total_size,
+    });
+
+    let mut resp = response.into_response();
+    resp.headers_mut().insert(
+        "accept-ranges",
+        "bytes".parse().unwrap(),
+    );
+
+    Ok(resp)
+}
+
+/// Parse HTTP Range header (e.g., "bytes=1024-2047")
+/// Returns (start, end) where end is exclusive
+fn parse_range_header(range_str: &str, total_size: usize) -> Option<(usize, usize)> {
+    // Range header format: "bytes=start-end"
+    let range_str = range_str.trim().strip_prefix("bytes=")?;
+
+    // Split on '-'
+    let parts: Vec<&str> = range_str.split('-').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let start: usize = parts[0].parse().ok()?;
+    let end: usize = if parts[1].is_empty() {
+        total_size
+    } else {
+        // HTTP Range header end is inclusive, convert to exclusive
+        parts[1].parse::<usize>().ok()? + 1
+    };
+
+    // Validate range
+    if start >= total_size || start >= end {
+        return None;
+    }
+
+    let end = std::cmp::min(end, total_size);
+
+    Some((start, end))
 }
 
 /// Archivist-compatible upload endpoint (POST /api/archivist/v1/data)
