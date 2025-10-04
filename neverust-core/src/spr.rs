@@ -47,10 +47,10 @@ struct ArchivistSpr {
     #[prost(bytes = "vec", optional, tag = "1")]
     peer_id: Option<Vec<u8>>,
     #[prost(bytes = "vec", optional, tag = "2")]
-    seq_bytes: Option<Vec<u8>>,  // 2 bytes
-    #[prost(bytes = "vec", repeated, tag = "3")]  // Contains nested PeerInfo protobuf
+    seq_bytes: Option<Vec<u8>>, // 2 bytes
+    #[prost(bytes = "vec", repeated, tag = "3")] // Contains nested PeerInfo protobuf
     peer_record: Vec<Vec<u8>>,
-    #[prost(bytes = "vec", repeated, tag = "5")]  // Signature (DER format)
+    #[prost(bytes = "vec", repeated, tag = "5")] // Signature (DER format)
     signature: Vec<Vec<u8>>,
 }
 
@@ -61,7 +61,7 @@ struct PeerInfo {
     peer_id: Option<Vec<u8>>,
     #[prost(uint64, tag = "2")]
     seq: u64,
-    #[prost(bytes = "vec", repeated, tag = "3")]  // Multiaddrs are in field 3!
+    #[prost(bytes = "vec", repeated, tag = "3")] // Multiaddrs are in field 3!
     addrs: Vec<Vec<u8>>,
 }
 
@@ -99,7 +99,8 @@ fn parse_single_spr(spr_base64: &str) -> Result<(PeerId, Vec<Multiaddr>), SprErr
     let spr = ArchivistSpr::decode(&bytes[..])?;
 
     // Extract peer_id bytes
-    let peer_id_bytes = spr.peer_id
+    let peer_id_bytes = spr
+        .peer_id
         .ok_or_else(|| SprError::Protobuf(prost::DecodeError::new("Missing peer_id")))?;
 
     // The peer_id field contains a PublicKey protobuf (not raw peer ID bytes)
@@ -181,16 +182,30 @@ mod tests {
                     println!("  peer_id (field 1): {} bytes", peer_id.len());
                 }
                 if let Some(seq) = &spr.seq_bytes {
-                    println!("  seq_bytes (field 2): {} bytes - {}", seq.len(), hex::encode(seq));
+                    println!(
+                        "  seq_bytes (field 2): {} bytes - {}",
+                        seq.len(),
+                        hex::encode(seq)
+                    );
                 }
                 println!("  peer_record (field 3) count: {}", spr.peer_record.len());
                 for (i, rec) in spr.peer_record.iter().enumerate() {
-                    println!("    peer_record[{}]: {} bytes - full hex: {}", i, rec.len(), hex::encode(rec));
+                    println!(
+                        "    peer_record[{}]: {} bytes - full hex: {}",
+                        i,
+                        rec.len(),
+                        hex::encode(rec)
+                    );
                     match PeerInfo::decode(&rec[..]) {
                         Ok(peer_info) => {
                             println!("      -> PeerInfo decoded: {} addrs", peer_info.addrs.len());
                             for (j, addr) in peer_info.addrs.iter().enumerate() {
-                                println!("         addr[{}]: {} bytes - {}", j, addr.len(), hex::encode(&addr[..addr.len().min(20)]));
+                                println!(
+                                    "         addr[{}]: {} bytes - {}",
+                                    j,
+                                    addr.len(),
+                                    hex::encode(&addr[..addr.len().min(20)])
+                                );
                             }
                         }
                         Err(e) => {

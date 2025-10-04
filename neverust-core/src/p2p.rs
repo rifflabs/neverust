@@ -3,9 +3,7 @@
 //! Implements the core P2P stack with TCP+Noise+Mplex transports
 //! and BlockExc protocol (matching Archivist exactly).
 
-use libp2p::{
-    noise, tcp, PeerId, Swarm, SwarmBuilder,
-};
+use libp2p::{noise, tcp, PeerId, Swarm, SwarmBuilder};
 use libp2p_mplex as mplex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,7 +32,12 @@ pub struct Behaviour {
 }
 
 /// Create a new P2P swarm with default configuration
-pub async fn create_swarm(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: crate::metrics::Metrics) -> Result<Swarm<Behaviour>, P2PError> {
+pub async fn create_swarm(
+    block_store: Arc<BlockStore>,
+    mode: String,
+    price_per_byte: u64,
+    metrics: crate::metrics::Metrics,
+) -> Result<Swarm<Behaviour>, P2PError> {
     // Generate keypair for this node
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
@@ -75,14 +78,18 @@ mod tests {
     #[tokio::test]
     async fn test_create_swarm() {
         let block_store = Arc::new(BlockStore::new());
-        let swarm = create_swarm(block_store, "altruistic".to_string(), 1).await.unwrap();
+        let swarm = create_swarm(block_store, "altruistic".to_string(), 1)
+            .await
+            .unwrap();
         assert!(swarm.local_peer_id().to_string().len() > 0);
     }
 
     #[tokio::test]
     async fn test_swarm_can_listen() {
         let block_store = Arc::new(BlockStore::new());
-        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1).await.unwrap();
+        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1)
+            .await
+            .unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let result = swarm.listen_on(addr);
         assert!(result.is_ok());

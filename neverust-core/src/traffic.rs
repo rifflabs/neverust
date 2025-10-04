@@ -8,15 +8,15 @@
 //!
 //! Enable with: ENABLE_TRAFFIC_GEN=true
 
-use crate::storage::{Block, BlockStore};
 use crate::botg::BoTgProtocol;
+use crate::storage::{Block, BlockStore};
 use rand::Rng;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::sleep;
 use tokio::sync::{mpsc, RwLock};
+use tokio::time::sleep;
 use tracing::{info, warn};
-use std::collections::HashSet;
 
 /// Traffic generator configuration
 #[derive(Debug, Clone)]
@@ -37,9 +37,9 @@ impl Default for TrafficConfig {
     fn default() -> Self {
         Self {
             node_id: "unknown".to_string(),
-            upload_rate: 10,      // 10 blocks/min
-            request_rate: 20,     // 20 requests/min
-            block_size: 1024 * 1024,  // 1 MiB blocks
+            upload_rate: 10,         // 10 blocks/min
+            request_rate: 20,        // 20 requests/min
+            block_size: 1024 * 1024, // 1 MiB blocks
             api_port: 8080,
         }
     }
@@ -58,7 +58,7 @@ pub enum P2PCommand {
 pub async fn start_traffic_generator(
     config: TrafficConfig,
     block_store: Arc<BlockStore>,
-    botg: Arc<BoTgProtocol>,
+    _botg: Arc<BoTgProtocol>,
     p2p_tx: mpsc::UnboundedSender<P2PCommand>,
 ) {
     info!(
@@ -100,7 +100,10 @@ pub async fn start_traffic_generator(
         cid_discovery_loop(discovery_config, discovery_store, discovery_cids).await;
     });
 
-    info!("Traffic generator running in P2P mode for node {}", config.node_id);
+    info!(
+        "Traffic generator running in P2P mode for node {}",
+        config.node_id
+    );
 }
 
 /// Generate blocks and advertise them via P2P
@@ -116,9 +119,7 @@ async fn block_upload_loop_p2p(
         // Generate random block data (1 MiB)
         let data: Vec<u8> = {
             let mut rng = rand::thread_rng();
-            (0..config.block_size)
-                .map(|_| rng.gen::<u8>())
-                .collect()
+            (0..config.block_size).map(|_| rng.gen::<u8>()).collect()
         };
 
         // Create and store block
@@ -138,12 +139,18 @@ async fn block_upload_loop_p2p(
                         }
                     }
                     Err(e) => {
-                        warn!("[TRAFFIC-P2P] Node {} failed to store block: {}", config.node_id, e);
+                        warn!(
+                            "[TRAFFIC-P2P] Node {} failed to store block: {}",
+                            config.node_id, e
+                        );
                     }
                 }
             }
             Err(e) => {
-                warn!("[TRAFFIC-P2P] Node {} failed to create block: {}", config.node_id, e);
+                warn!(
+                    "[TRAFFIC-P2P] Node {} failed to create block: {}",
+                    config.node_id, e
+                );
             }
         }
 
@@ -180,9 +187,15 @@ async fn block_request_loop_p2p(
                 // Already have it, skip
             } else {
                 // Don't have it, request from network
-                info!("[TRAFFIC-P2P] Node {} requesting block {} from network", config.node_id, random_cid);
+                info!(
+                    "[TRAFFIC-P2P] Node {} requesting block {} from network",
+                    config.node_id, random_cid
+                );
                 if let Err(e) = p2p_tx.send(P2PCommand::RequestBlock(random_cid)) {
-                    warn!("[TRAFFIC-P2P] Failed to request block {}: {}", random_cid, e);
+                    warn!(
+                        "[TRAFFIC-P2P] Failed to request block {}: {}",
+                        random_cid, e
+                    );
                 }
             }
         }
@@ -276,13 +289,19 @@ fn parse_size(s: &str) -> Option<usize> {
 
     // Parse with suffix
     if s.ends_with('m') {
-        s[..s.len()-1].parse::<usize>().ok().map(|n| n * 1024 * 1024)
+        s[..s.len() - 1]
+            .parse::<usize>()
+            .ok()
+            .map(|n| n * 1024 * 1024)
     } else if s.ends_with('k') {
-        s[..s.len()-1].parse::<usize>().ok().map(|n| n * 1024)
+        s[..s.len() - 1].parse::<usize>().ok().map(|n| n * 1024)
     } else if s.ends_with("mb") {
-        s[..s.len()-2].parse::<usize>().ok().map(|n| n * 1024 * 1024)
+        s[..s.len() - 2]
+            .parse::<usize>()
+            .ok()
+            .map(|n| n * 1024 * 1024)
     } else if s.ends_with("kb") {
-        s[..s.len()-2].parse::<usize>().ok().map(|n| n * 1024)
+        s[..s.len() - 2].parse::<usize>().ok().map(|n| n * 1024)
     } else {
         None
     }

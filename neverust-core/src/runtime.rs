@@ -3,11 +3,17 @@
 //! Handles the main event loop, processing Swarm events and managing
 //! the lifecycle of the P2P node.
 
-use crate::{api, botg::{BoTgConfig, BoTgProtocol}, config::Config, metrics::Metrics, p2p::{create_swarm, P2PError}, storage::BlockStore, traffic};
-use futures::StreamExt;
-use libp2p::{
-    swarm::SwarmEvent, Multiaddr,
+use crate::{
+    api,
+    botg::{BoTgConfig, BoTgProtocol},
+    config::Config,
+    metrics::Metrics,
+    p2p::{create_swarm, P2PError},
+    storage::BlockStore,
+    traffic,
 };
+use futures::StreamExt;
+use libp2p::{swarm::SwarmEvent, Multiaddr};
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -23,11 +29,20 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     info!("Initialized metrics collector");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
-    let mut swarm = create_swarm(block_store.clone(), config.mode.clone(), config.price_per_byte, metrics.clone()).await?;
+    let mut swarm = create_swarm(
+        block_store.clone(),
+        config.mode.clone(),
+        config.price_per_byte,
+        metrics.clone(),
+    )
+    .await?;
     let peer_id = swarm.local_peer_id().to_string();
 
     // Initialize BoTG (Block-over-TGP) protocol for high-speed block exchange
-    info!("Initializing BoTG protocol on UDP port {}", config.disc_port);
+    info!(
+        "Initializing BoTG protocol on UDP port {}",
+        config.disc_port
+    );
     let botg_config = BoTgConfig {
         local_peer_id: rand::random(), // Generate random peer ID for TGP
         epoch: 0,
@@ -40,8 +55,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
 
     // Create UDP socket for BoTG
     let udp_socket = Arc::new(
-        tokio::net::UdpSocket::bind(bind_addr).await
-            .map_err(|e| P2PError::Transport(format!("Failed to bind UDP socket: {}", e)))?
+        tokio::net::UdpSocket::bind(bind_addr)
+            .await
+            .map_err(|e| P2PError::Transport(format!("Failed to bind UDP socket: {}", e)))?,
     );
     info!("BoTG: UDP socket bound to {}", bind_addr);
 
@@ -66,7 +82,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
 
             // Generate all 50 Docker network peers
             let mut docker_peers = vec![
-                "172.25.0.10:8090".to_string(),  // bootstrap
+                "172.25.0.10:8090".to_string(), // bootstrap
             ];
 
             // Add node1-49 (172.25.1.2 through 172.25.1.50)
@@ -81,7 +97,10 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                     added += 1;
                 }
             }
-            info!("BoTG: Added {} Docker network peers for P2P communication", added);
+            info!(
+                "BoTG: Added {} Docker network peers for P2P communication",
+                added
+            );
         }
     });
 
@@ -111,7 +130,8 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         let (p2p_tx, mut p2p_rx) = tokio::sync::mpsc::unbounded_channel();
 
         tokio::spawn(async move {
-            traffic::start_traffic_generator(traffic_config, traffic_store, traffic_botg, p2p_tx).await;
+            traffic::start_traffic_generator(traffic_config, traffic_store, traffic_botg, p2p_tx)
+                .await;
         });
 
         // Handle P2P commands from traffic generator
@@ -146,7 +166,8 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Fetch bootstrap nodes early
     let bootstrap_addrs = if config.bootstrap_nodes.is_empty() {
         info!("No bootstrap nodes configured, fetching...");
-        Config::fetch_bootstrap_nodes().await
+        Config::fetch_bootstrap_nodes()
+            .await
             .map_err(|e| P2PError::Transport(format!("Failed to fetch bootstrap nodes: {}", e)))?
     } else {
         config.bootstrap_nodes.clone()

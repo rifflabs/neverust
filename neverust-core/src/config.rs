@@ -82,6 +82,21 @@ pub struct Config {
     pub price_per_byte: u64,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            data_dir: PathBuf::from("./data"),
+            listen_port: 8070,
+            disc_port: 8090,
+            api_port: 8080,
+            log_level: "info".to_string(),
+            bootstrap_nodes: Vec::new(),
+            mode: "altruistic".to_string(),
+            price_per_byte: 1,
+        }
+    }
+}
+
 impl Config {
     /// Create config from CLI arguments
     pub fn from_cli() -> Result<Self, ConfigError> {
@@ -99,19 +114,6 @@ impl Config {
         Ok(config)
     }
 
-    /// Get default configuration
-    pub fn default() -> Self {
-        Config {
-            data_dir: PathBuf::from("./data"),
-            listen_port: 8070,
-            disc_port: 8090,
-            api_port: 8080,
-            log_level: "info".to_string(),
-            bootstrap_nodes: Vec::new(),
-            mode: "altruistic".to_string(),
-            price_per_byte: 1,
-        }
-    }
 
     /// Fetch or determine bootstrap nodes
     ///
@@ -121,7 +123,10 @@ impl Config {
     pub async fn fetch_bootstrap_nodes() -> Result<Vec<String>, ConfigError> {
         // Check for BOOTSTRAP_NODE environment variable first
         if let Ok(bootstrap_node) = std::env::var("BOOTSTRAP_NODE") {
-            tracing::info!("Using local bootstrap node from BOOTSTRAP_NODE env: {}", bootstrap_node);
+            tracing::info!(
+                "Using local bootstrap node from BOOTSTRAP_NODE env: {}",
+                bootstrap_node
+            );
 
             // Parse the bootstrap node address (format: "host:port" or "ip:port")
             // We need to fetch the peer ID from the node's API
@@ -152,14 +157,19 @@ impl Config {
                                 }
                             };
                             // Use port 8070 for P2P (not the API port)
-                            let multiaddr = format!("/ip4/{}/tcp/8070/p2p/{}", resolved_host, peer_id);
+                            let multiaddr =
+                                format!("/ip4/{}/tcp/8070/p2p/{}", resolved_host, peer_id);
                             tracing::info!("Resolved local bootstrap multiaddr: {}", multiaddr);
                             return Ok(vec![multiaddr]);
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to fetch peer ID from bootstrap node {}: {}", bootstrap_node, e);
+                    tracing::warn!(
+                        "Failed to fetch peer ID from bootstrap node {}: {}",
+                        bootstrap_node,
+                        e
+                    );
                 }
             }
         }
@@ -176,14 +186,26 @@ impl Config {
         // Fetch SPR records from testnet
         let response = reqwest::get("https://spr.archivist.storage/testnet")
             .await
-            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+            .map_err(|e| {
+                ConfigError::Io(std::io::Error::other(
+                    e.to_string(),
+                ))
+            })?
             .text()
             .await
-            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| {
+                ConfigError::Io(std::io::Error::other(
+                    e.to_string(),
+                ))
+            })?;
 
         // Parse SPR records
-        let records = parse_spr_records(&response)
-            .map_err(|e| ConfigError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
+        let records = parse_spr_records(&response).map_err(|e| {
+            ConfigError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e.to_string(),
+            ))
+        })?;
 
         // Convert UDP discovery addresses to TCP for actual connections
         // Archivist testnet nodes use TCP+Noise+Mplex (NOT QUIC)

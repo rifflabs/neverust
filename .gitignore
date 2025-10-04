@@ -22,3 +22,4 @@ target
 # AI configuration (user-specific)
 .mcp.json
 synthesis
+.playwright-mcp/

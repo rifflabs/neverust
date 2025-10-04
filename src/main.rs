@@ -2,7 +2,7 @@
 //!
 //! A high-performance P2P storage node implementation using rust-libp2p.
 
-use neverust_core::{Config, run_node};
+use neverust_core::{run_node, Config};
 use std::error::Error;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

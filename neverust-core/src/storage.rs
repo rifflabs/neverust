@@ -122,7 +122,7 @@ impl BlockStore {
         blocks
             .get(&cid_str)
             .cloned()
-            .ok_or_else(|| StorageError::BlockNotFound(cid_str))
+            .ok_or(StorageError::BlockNotFound(cid_str))
     }
 
     /// Check if a block exists

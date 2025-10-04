@@ -14,9 +14,9 @@ use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
-use crate::storage::{Block, BlockStore, StorageError};
-use crate::metrics::Metrics;
 use crate::botg::BoTgProtocol;
+use crate::metrics::Metrics;
+use crate::storage::{Block, BlockStore, StorageError};
 
 /// API state shared across handlers
 #[derive(Clone)]
@@ -57,7 +57,12 @@ pub struct ErrorResponse {
 }
 
 /// Create the REST API router
-pub fn create_router(block_store: Arc<BlockStore>, metrics: Metrics, peer_id: String, botg: Arc<BoTgProtocol>) -> Router {
+pub fn create_router(
+    block_store: Arc<BlockStore>,
+    metrics: Metrics,
+    peer_id: String,
+    botg: Arc<BoTgProtocol>,
+) -> Router {
     let state = ApiState {
         block_store,
         metrics,
@@ -72,7 +77,10 @@ pub fn create_router(block_store: Arc<BlockStore>, metrics: Metrics, peer_id: St
         .route("/api/v1/blocks/:cid", get(get_block))
         // Archivist-compatible endpoints
         .route("/api/archivist/v1/data", post(archivist_upload))
-        .route("/api/archivist/v1/data/:cid/network/stream", get(archivist_download))
+        .route(
+            "/api/archivist/v1/data/:cid/network/stream",
+            get(archivist_download),
+        )
         .route("/api/archivist/v1/peer-id", get(peer_id_endpoint))
         .route("/api/archivist/v1/stats", get(archivist_stats))
         .with_state(state)
@@ -95,7 +103,9 @@ async fn metrics_endpoint(State(state): State<ApiState>) -> impl IntoResponse {
     let stats = state.block_store.stats().await;
 
     // Generate Prometheus-compatible metrics using the Metrics module
-    let metrics = state.metrics.to_prometheus(stats.block_count, stats.total_size);
+    let metrics = state
+        .metrics
+        .to_prometheus(stats.block_count, stats.total_size);
 
     (
         StatusCode::OK,
@@ -150,14 +160,10 @@ async fn get_block(
         .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
 
     // Get block from store
-    let block = state
-        .block_store
-        .get(&cid)
-        .await
-        .map_err(|e| match e {
-            StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.clone()),
-            _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
-        })?;
+    let block = state.block_store.get(&cid).await.map_err(|e| match e {
+        StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.clone()),
+        _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
+    })?;
 
     info!("API: Retrieved block {} ({} bytes)", cid_str, block.size());
 
@@ -215,13 +221,20 @@ async fn archivist_download(
     // Try to get block from local store first
     match state.block_store.get(&cid).await {
         Ok(block) => {
-            info!("Archivist API: Downloaded {} from local store ({} bytes)", cid_str, block.size());
+            info!(
+                "Archivist API: Downloaded {} from local store ({} bytes)",
+                cid_str,
+                block.size()
+            );
             Ok(block.data)
         }
         Err(StorageError::BlockNotFound(_)) => {
             // Block not found locally - try fetching from known peers via HTTP
             // This is a temporary solution - in production would use BlockExc/BoTG
-            info!("Archivist API: Block {} not found locally, fetching from peers", cid_str);
+            info!(
+                "Archivist API: Block {} not found locally, fetching from peers",
+                cid_str
+            );
 
             // Try all known peers in Docker network (Archivist-style peer discovery)
             // Generate peer list: bootstrap + node1..node49 (for 50 node cluster)
@@ -241,33 +254,54 @@ async fn archivist_download(
                 peer_hostnames.shuffle(&mut rng);
             }
 
-            for hostname in peer_hostnames.iter().take(10) {  // Try up to 10 random peers
-                let url = format!("http://{}:8080/api/archivist/v1/data/{}/network/stream", hostname, cid_str);
+            for hostname in peer_hostnames.iter().take(10) {
+                // Try up to 10 random peers
+                let url = format!(
+                    "http://{}:8080/api/archivist/v1/data/{}/network/stream",
+                    hostname, cid_str
+                );
 
-                info!("Archivist API: Trying to fetch {} from {}", cid_str, hostname);
+                info!(
+                    "Archivist API: Trying to fetch {} from {}",
+                    cid_str, hostname
+                );
 
                 match client.get(&url).send().await {
                     Ok(resp) => {
                         if resp.status().is_success() {
                             match resp.bytes().await {
                                 Ok(data) => {
-                                    info!("Archivist API: Fetched {} from {} ({} bytes)", cid_str, hostname, data.len());
+                                    info!(
+                                        "Archivist API: Fetched {} from {} ({} bytes)",
+                                        cid_str,
+                                        hostname,
+                                        data.len()
+                                    );
 
                                     // Store locally
-                                    let block = Block::new(data.to_vec())
-                                        .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
+                                    let block = Block::new(data.to_vec()).map_err(|e| {
+                                        ApiError::Internal(format!("Failed to create block: {}", e))
+                                    })?;
 
-                                    state.block_store.put(block.clone()).await
-                                        .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+                                    state.block_store.put(block.clone()).await.map_err(|e| {
+                                        ApiError::Internal(format!("Failed to store block: {}", e))
+                                    })?;
 
                                     return Ok(block.data);
                                 }
                                 Err(e) => {
-                                    info!("Archivist API: Failed to read response from {}: {}", hostname, e);
+                                    info!(
+                                        "Archivist API: Failed to read response from {}: {}",
+                                        hostname, e
+                                    );
                                 }
                             }
                         } else {
-                            info!("Archivist API: Got HTTP {} from {}", resp.status(), hostname);
+                            info!(
+                                "Archivist API: Got HTTP {} from {}",
+                                resp.status(),
+                                hostname
+                            );
                         }
                     }
                     Err(e) => {
@@ -276,10 +310,16 @@ async fn archivist_download(
                 }
             }
 
-            info!("Archivist API: Block {} not available from any peer", cid_str);
+            info!(
+                "Archivist API: Block {} not available from any peer",
+                cid_str
+            );
             Err(ApiError::NotFound(cid_str.clone()))
         }
-        Err(e) => Err(ApiError::Internal(format!("Failed to retrieve block: {}", e))),
+        Err(e) => Err(ApiError::Internal(format!(
+            "Failed to retrieve block: {}",
+            e
+        ))),
     }
 }
 
@@ -310,10 +350,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::NotFound(cid) => (
-                StatusCode::NOT_FOUND,
-                format!("Block not found: {}", cid),
-            ),
+            ApiError::NotFound(cid) => (StatusCode::NOT_FOUND, format!("Block not found: {}", cid)),
             ApiError::Internal(msg) => {
                 error!("API error: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, msg)
@@ -392,7 +429,9 @@ mod tests {
         let get_block_response: GetBlockResponse = serde_json::from_slice(&body).unwrap();
 
         // Verify data matches
-        let decoded_data = base64::prelude::BASE64_STANDARD.decode(&get_block_response.data).unwrap();
+        let decoded_data = base64::prelude::BASE64_STANDARD
+            .decode(&get_block_response.data)
+            .unwrap();
         assert_eq!(decoded_data, test_data);
     }
 

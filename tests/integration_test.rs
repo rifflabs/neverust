@@ -3,12 +3,9 @@
 //! These tests connect to the actual Archivist testnet and verify
 //! every step of the protocol stack.
 
-use neverust_core::{create_swarm, Config, BlockStore, Metrics};
 use futures_util::stream::StreamExt;
-use libp2p::{
-    swarm::SwarmEvent,
-    Multiaddr,
-};
+use libp2p::{swarm::SwarmEvent, Multiaddr};
+use neverust_core::{create_swarm, BlockStore, Config, Metrics};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -19,8 +16,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 fn init_tracing() {
     let _ = fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("debug"))
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")),
         )
         .with_test_writer()
         .try_init();
@@ -39,7 +35,10 @@ async fn test_fetch_bootstrap_nodes() {
 
     assert!(!bootstrap_nodes.is_empty(), "No bootstrap nodes returned");
 
-    info!("✅ Successfully fetched {} bootstrap nodes:", bootstrap_nodes.len());
+    info!(
+        "✅ Successfully fetched {} bootstrap nodes:",
+        bootstrap_nodes.len()
+    );
     for node in &bootstrap_nodes {
         info!("  - {}", node);
     }
@@ -54,7 +53,9 @@ async fn test_create_swarm_and_listen() {
 
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+        .await
+        .expect("Failed to create swarm");
     let peer_id = *swarm.local_peer_id();
 
     info!("✅ Created swarm with peer ID: {}", peer_id);
@@ -64,7 +65,8 @@ async fn test_create_swarm_and_listen() {
         .parse()
         .expect("Invalid listen address");
 
-    swarm.listen_on(listen_addr.clone())
+    swarm
+        .listen_on(listen_addr.clone())
         .expect("Failed to start listening");
 
     info!("📡 Started listening on {}", listen_addr);
@@ -111,7 +113,9 @@ async fn test_dial_bootstrap_node() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+        .await
+        .expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
     info!("📝 Local peer ID: {}", local_peer_id);
 
@@ -175,11 +179,26 @@ async fn test_dial_bootstrap_node() {
                         warn!("❌ Connection error to {:?}: {}", peer_id, error);
                         return Err(format!("Connection failed: {}", error));
                     }
-                    SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        info!("📥 Incoming connection from {} on {}", send_back_addr, local_addr);
+                    SwarmEvent::IncomingConnection {
+                        local_addr,
+                        send_back_addr,
+                        ..
+                    } => {
+                        info!(
+                            "📥 Incoming connection from {} on {}",
+                            send_back_addr, local_addr
+                        );
                     }
-                    SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, .. } => {
-                        warn!("❌ Incoming connection error from {} on {}: {}", send_back_addr, local_addr, error);
+                    SwarmEvent::IncomingConnectionError {
+                        local_addr,
+                        send_back_addr,
+                        error,
+                        ..
+                    } => {
+                        warn!(
+                            "❌ Incoming connection error from {} on {}: {}",
+                            send_back_addr, local_addr, error
+                        );
                     }
                     other => {
                         debug!("Other event: {:?}", other);
@@ -237,7 +256,9 @@ async fn test_connect_and_verify_all_protocols() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+        .await
+        .expect("Failed to create swarm");
     info!("📝 Local peer: {}", swarm.local_peer_id());
 
     // Listen
@@ -286,9 +307,7 @@ async fn test_connect_and_verify_all_protocols() {
                         steps.dialing_started = true;
                     }
                     SwarmEvent::ConnectionEstablished {
-                        peer_id,
-                        endpoint,
-                        ..
+                        peer_id, endpoint, ..
                     } => {
                         info!("✅ STEP 2-5: Connection established (TCP + Noise + Mplex)");
                         info!("  Peer: {}", peer_id);
@@ -318,12 +337,42 @@ async fn test_connect_and_verify_all_protocols() {
 
                 // Print progress
                 info!("📊 Protocol Steps Progress:");
-                info!("  1. Dialing started:           {}", if steps.dialing_started { "✅" } else { "⏳" });
-                info!("  2. TCP connected:             {}", if steps.tcp_connected { "✅" } else { "⏳" });
-                info!("  3. Noise handshake:           {}", if steps.noise_handshake_complete { "✅" } else { "⏳" });
-                info!("  4. Mplex negotiated:          {}", if steps.mplex_negotiated { "✅" } else { "⏳" });
-                info!("  5. Connection established:    {}", if steps.connection_established { "✅" } else { "⏳" });
-                info!("  6. Ping protocol:             {}", if steps.ping_sent || steps.ping_received { "✅" } else { "⏳" });
+                info!(
+                    "  1. Dialing started:           {}",
+                    if steps.dialing_started { "✅" } else { "⏳" }
+                );
+                info!(
+                    "  2. TCP connected:             {}",
+                    if steps.tcp_connected { "✅" } else { "⏳" }
+                );
+                info!(
+                    "  3. Noise handshake:           {}",
+                    if steps.noise_handshake_complete {
+                        "✅"
+                    } else {
+                        "⏳"
+                    }
+                );
+                info!(
+                    "  4. Mplex negotiated:          {}",
+                    if steps.mplex_negotiated { "✅" } else { "⏳" }
+                );
+                info!(
+                    "  5. Connection established:    {}",
+                    if steps.connection_established {
+                        "✅"
+                    } else {
+                        "⏳"
+                    }
+                );
+                info!(
+                    "  6. Ping protocol:             {}",
+                    if steps.ping_sent || steps.ping_received {
+                        "✅"
+                    } else {
+                        "⏳"
+                    }
+                );
 
                 // Check if all critical steps are done
                 if steps.connection_established {
@@ -383,7 +432,9 @@ async fn test_connect_to_all_bootstrap_nodes() {
         // Create fresh swarm for each test
         let block_store = Arc::new(BlockStore::new());
         let metrics = Metrics::new();
-        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
+        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+            .await
+            .expect("Failed to create swarm");
 
         // Listen
         let listen_addr: Multiaddr = "/ip4/0.0.0.0/tcp/0".parse().unwrap();
@@ -462,7 +513,9 @@ async fn test_blockexc_protocol_detailed() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics).await.expect("Failed to create swarm");
+    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+        .await
+        .expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
     info!("📝 Local peer: {}", local_peer_id);
 

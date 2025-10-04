@@ -2,7 +2,7 @@
 
 use futures_util::StreamExt;
 use libp2p::Multiaddr;
-use neverust_core::{create_swarm, BlockStore, Block, Metrics};
+use neverust_core::{create_swarm, Block, BlockStore, Metrics};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;

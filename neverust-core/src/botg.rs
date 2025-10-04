@@ -10,17 +10,17 @@
 //! - Achieve instant convergence even at 99% packet loss (TGP: 1+ Mbps)
 //! - Optimize for Neverust-to-Neverust block exchange
 
+use cid::Cid;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc};
-use tracing::{debug, info, error, warn};
-use cid::Cid;
-use serde::{Serialize, Deserialize};
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info, warn};
 
 // Re-export TGP types we'll use
-pub use consensus_tgp::{TgpConfig, TgpHandle};
 pub use consensus_common::types::StreamId;
+pub use consensus_tgp::{TgpConfig, TgpHandle};
 pub use consensus_transport_udp::api::TransportHandle;
 
 /// BoTG message types for UDP communication
@@ -85,7 +85,7 @@ impl Default for BoTgConfig {
         Self {
             max_rollup_size: 1000,
             max_rollup_bytes: 100 * 1024 * 1024, // 100 MB per rollup
-            mtu: 1200, // Optimal MTU from TGP benchmarks
+            mtu: 1200,                           // Optimal MTU from TGP benchmarks
             local_peer_id: rand::random(),
             epoch: 0,
         }
@@ -104,7 +104,7 @@ pub struct BoTgProtocol {
     /// Blocks we want from peers
     want_blocks: Arc<RwLock<HashSet<BlockId>>>,
     /// Channel to announce blocks to all connected peers
-    announce_tx: Option<mpsc::Sender<Vec<BlockId>>>,
+    _announce_tx: Option<mpsc::Sender<Vec<BlockId>>>,
     /// Known peer addresses (for UDP communication)
     peer_addrs: Arc<RwLock<Vec<SocketAddr>>>,
     /// UDP socket for BoTG messages
@@ -124,7 +124,7 @@ impl BoTgProtocol {
             pending_rollups: Arc::new(RwLock::new(Vec::new())),
             local_blocks: Arc::new(RwLock::new(HashSet::new())),
             want_blocks: Arc::new(RwLock::new(HashSet::new())),
-            announce_tx: None,
+            _announce_tx: None,
             peer_addrs: Arc::new(RwLock::new(Vec::new())),
             udp_socket: None,
             block_store: None,
@@ -159,10 +159,13 @@ impl BoTgProtocol {
     /// Send a BoTG message to a peer via UDP
     async fn send_message(&self, addr: SocketAddr, msg: &BoTgMessage) -> Result<(), BoTgError> {
         if let Some(socket) = &self.udp_socket {
-            let data = bincode::serialize(msg)
-                .map_err(|e| BoTgError::EncodingError(format!("Failed to serialize message: {}", e)))?;
+            let data = bincode::serialize(msg).map_err(|e| {
+                BoTgError::EncodingError(format!("Failed to serialize message: {}", e))
+            })?;
 
-            socket.send_to(&data, addr).await
+            socket
+                .send_to(&data, addr)
+                .await
                 .map_err(|e| BoTgError::TgpError(format!("Failed to send UDP: {}", e)))?;
 
             // Track metrics
@@ -173,13 +176,15 @@ impl BoTgProtocol {
             debug!("BoTG: Sent {} bytes to {}", data.len(), addr);
             Ok(())
         } else {
-            Err(BoTgError::TgpError("UDP socket not initialized".to_string()))
+            Err(BoTgError::TgpError(
+                "UDP socket not initialized".to_string(),
+            ))
         }
     }
 
     /// Announce that we have new blocks (called when blocks are stored)
     pub async fn announce_blocks(&self, cids: Vec<Cid>) {
-        let block_ids: Vec<BlockId> = cids.iter().map(|cid| Self::cid_to_block_id(cid)).collect();
+        let block_ids: Vec<BlockId> = cids.iter().map(Self::cid_to_block_id).collect();
 
         info!("BoTG: Announcing {} new blocks to network", block_ids.len());
 
@@ -202,7 +207,11 @@ impl BoTgProtocol {
                     warn!("BoTG: Failed to announce to {}: {}", peer_addr, e);
                 }
             }
-            info!("BoTG: Announced {} blocks to {} peers via UDP", cids.len(), peers.len());
+            info!(
+                "BoTG: Announced {} blocks to {} peers via UDP",
+                cids.len(),
+                peers.len()
+            );
         } else {
             debug!("BoTG: No peers to announce to");
         }
@@ -210,7 +219,7 @@ impl BoTgProtocol {
 
     /// Request blocks from the network (called when we need blocks)
     pub async fn request_blocks_by_cid(&self, cids: Vec<Cid>) {
-        let block_ids: Vec<BlockId> = cids.iter().map(|cid| Self::cid_to_block_id(cid)).collect();
+        let block_ids: Vec<BlockId> = cids.iter().map(Self::cid_to_block_id).collect();
 
         info!("BoTG: Requesting {} blocks from network", block_ids.len());
 
@@ -233,7 +242,11 @@ impl BoTgProtocol {
                     warn!("BoTG: Failed to request from {}: {}", peer_addr, e);
                 }
             }
-            info!("BoTG: Requested {} blocks from {} peers via UDP", cids.len(), peers.len());
+            info!(
+                "BoTG: Requested {} blocks from {} peers via UDP",
+                cids.len(),
+                peers.len()
+            );
         } else {
             debug!("BoTG: No peers to request from");
         }
@@ -249,16 +262,15 @@ impl BoTgProtocol {
         // Create UDP transport
         let transport_config = consensus_transport_udp::api::TransportConfig {
             bind: bind_addr,
-            batch: 64,          // Batch size for packet processing
-            sndbuf: 4 * 1024 * 1024,  // 4MB send buffer
-            rcvbuf: 4 * 1024 * 1024,  // 4MB receive buffer
+            batch: 64,               // Batch size for packet processing
+            sndbuf: 4 * 1024 * 1024, // 4MB send buffer
+            rcvbuf: 4 * 1024 * 1024, // 4MB receive buffer
         };
 
-        let transport = Arc::new(
-            TransportHandle::new(transport_config)
-                .await
-                .map_err(|e| BoTgError::TgpError(format!("Failed to create UDP transport: {}", e)))?,
-        );
+        let transport =
+            Arc::new(TransportHandle::new(transport_config).await.map_err(|e| {
+                BoTgError::TgpError(format!("Failed to create UDP transport: {}", e))
+            })?);
 
         info!("BoTG: UDP transport ready on {}", bind_addr);
 
@@ -285,12 +297,11 @@ impl BoTgProtocol {
 
         // Generate unique stream ID from epoch + local_id + peer_id
         // StreamId is u128, we'll pack: [epoch:32][local_id:64][peer_id:32]
-        let stream_id: StreamId =
-            ((self.config.epoch as u128) << 96) |
-            ((self.config.local_peer_id as u128) << 32) |
-            (peer_id as u128);
+        let stream_id: StreamId = ((self.config.epoch as u128) << 96)
+            | ((self.config.local_peer_id as u128) << 32)
+            | (peer_id as u128);
 
-        let tgp_config = TgpConfig {
+        let _tgp_config = TgpConfig {
             stream_id,
             epoch: self.config.epoch,
             local_id: self.config.local_peer_id,
@@ -304,18 +315,29 @@ impl BoTgProtocol {
         // 1. TransportHandle (UDP socket)
         // 2. Peer SocketAddr (extracted from multiaddr)
         // For now, just track the config
-        // let handle = TgpHandle::new(tgp_config, transport, peer_addr);
+        // let handle = TgpHandle::new(_tgp_config, transport, peer_addr);
 
         // Store config for future use when transport is wired up
         // self.handles.write().await.insert(peer_id, handle);
 
-        info!("BoTG: TGP config created for peer {} (transport integration pending)", peer_id);
+        info!(
+            "BoTG: TGP config created for peer {} (transport integration pending)",
+            peer_id
+        );
         Ok(())
     }
 
     /// Request blocks from a peer using rollup protocol
-    pub async fn request_blocks(&self, peer_id: u64, blocks: Vec<BlockId>) -> Result<(), BoTgError> {
-        debug!("BoTG: Requesting {} blocks from peer {}", blocks.len(), peer_id);
+    pub async fn request_blocks(
+        &self,
+        peer_id: u64,
+        blocks: Vec<BlockId>,
+    ) -> Result<(), BoTgError> {
+        debug!(
+            "BoTG: Requesting {} blocks from peer {}",
+            blocks.len(),
+            peer_id
+        );
 
         // Create rollup from requested blocks
         let rollup = BlockRollup {
@@ -336,7 +358,10 @@ impl BoTgProtocol {
 
             // TODO: Use TGP handle's start_streaming to send data
             // For now, just track the rollup request
-            debug!("BoTG: Queued rollup request {} for peer {}", rollup.id, peer_id);
+            debug!(
+                "BoTG: Queued rollup request {} for peer {}",
+                rollup.id, peer_id
+            );
             Ok(())
         } else {
             Err(BoTgError::NoPeerConnection(peer_id))
@@ -418,11 +443,17 @@ impl BoTgProtocol {
                             match bincode::deserialize::<BoTgMessage>(&buf[..len]) {
                                 Ok(msg) => {
                                     if let Err(e) = self.handle_message(peer_addr, msg).await {
-                                        warn!("BoTG: Failed to handle message from {}: {}", peer_addr, e);
+                                        warn!(
+                                            "BoTG: Failed to handle message from {}: {}",
+                                            peer_addr, e
+                                        );
                                     }
                                 }
                                 Err(e) => {
-                                    warn!("BoTG: Failed to deserialize message from {}: {}", peer_addr, e);
+                                    warn!(
+                                        "BoTG: Failed to deserialize message from {}: {}",
+                                        peer_addr, e
+                                    );
                                 }
                             }
                         }
@@ -439,35 +470,60 @@ impl BoTgProtocol {
     }
 
     /// Handle incoming BoTG message
-    async fn handle_message(&self, peer_addr: SocketAddr, msg: BoTgMessage) -> Result<(), BoTgError> {
+    async fn handle_message(
+        &self,
+        peer_addr: SocketAddr,
+        msg: BoTgMessage,
+    ) -> Result<(), BoTgError> {
         match msg {
             BoTgMessage::Announce { cids } => {
-                info!("BoTG: Received announcement of {} blocks from {}", cids.len(), peer_addr);
+                info!(
+                    "BoTG: Received announcement of {} blocks from {}",
+                    cids.len(),
+                    peer_addr
+                );
                 // Add peer to our known peers
                 self.add_peer(peer_addr).await;
                 // Could request these blocks if we need them
                 Ok(())
             }
             BoTgMessage::Request { cids } => {
-                info!("BoTG: Received request for {} blocks from {}", cids.len(), peer_addr);
+                info!(
+                    "BoTG: Received request for {} blocks from {}",
+                    cids.len(),
+                    peer_addr
+                );
                 self.handle_block_request(peer_addr, cids).await
             }
             BoTgMessage::Response { cid, data } => {
-                info!("BoTG: Received block response ({} bytes) from {}", data.len(), peer_addr);
+                info!(
+                    "BoTG: Received block response ({} bytes) from {}",
+                    data.len(),
+                    peer_addr
+                );
                 self.handle_block_response(cid, data).await
             }
         }
     }
 
     /// Handle block request - send block data if we have it
-    async fn handle_block_request(&self, peer_addr: SocketAddr, cids: Vec<Vec<u8>>) -> Result<(), BoTgError> {
+    async fn handle_block_request(
+        &self,
+        peer_addr: SocketAddr,
+        cids: Vec<Vec<u8>>,
+    ) -> Result<(), BoTgError> {
         if let Some(store) = &self.block_store {
             for cid_bytes in cids {
                 // Convert to CID
                 if let Ok(cid) = Cid::try_from(&cid_bytes[..]) {
                     // Try to fetch block from store
                     if let Ok(block) = store.get(&cid).await {
-                        info!("BoTG: Sending block {} ({} bytes) to {}", cid, block.data.len(), peer_addr);
+                        info!(
+                            "BoTG: Sending block {} ({} bytes) to {}",
+                            cid,
+                            block.data.len(),
+                            peer_addr
+                        );
 
                         // Send block data as response
                         let response = BoTgMessage::Response {
@@ -486,23 +542,22 @@ impl BoTgProtocol {
     }
 
     /// Handle block response - store received block
-    async fn handle_block_response(&self, cid_bytes: Vec<u8>, data: Vec<u8>) -> Result<(), BoTgError> {
+    async fn handle_block_response(
+        &self,
+        cid_bytes: Vec<u8>,
+        data: Vec<u8>,
+    ) -> Result<(), BoTgError> {
         if let Some(store) = &self.block_store {
             if let Ok(cid) = Cid::try_from(&cid_bytes[..]) {
                 // Create block and store it
-                let block = crate::storage::Block {
-                    cid,
-                    data,
-                };
+                let block = crate::storage::Block { cid, data };
 
                 match store.put(block).await {
                     Ok(_) => {
                         info!("BoTG: Stored received block {}", cid);
                         Ok(())
                     }
-                    Err(e) => {
-                        Err(BoTgError::TgpError(format!("Failed to store block: {}", e)))
-                    }
+                    Err(e) => Err(BoTgError::TgpError(format!("Failed to store block: {}", e))),
                 }
             } else {
                 Err(BoTgError::DecodingError("Invalid CID".to_string()))
@@ -556,9 +611,7 @@ mod tests {
         let config = BoTgConfig::default();
         let protocol = BoTgProtocol::new(config);
 
-        let blocks = vec![
-            BlockId { cid: vec![1, 2, 3] },
-        ];
+        let blocks = vec![BlockId { cid: vec![1, 2, 3] }];
 
         protocol.add_local_blocks(blocks.clone()).await;
         protocol.add_wanted_blocks(blocks).await;
@@ -571,9 +624,7 @@ mod tests {
 
         let rollup = BlockRollup {
             id: 123,
-            blocks: vec![
-                BlockId { cid: vec![1, 2, 3] },
-            ],
+            blocks: vec![BlockId { cid: vec![1, 2, 3] }],
             total_size: 100,
             priority: 128,
         };

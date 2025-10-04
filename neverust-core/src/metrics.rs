@@ -80,12 +80,16 @@ impl Metrics {
 
     pub fn block_sent(&self, size: usize) {
         self.inner.blocks_sent.fetch_add(1, Ordering::Relaxed);
-        self.inner.bytes_sent.fetch_add(size as u64, Ordering::Relaxed);
+        self.inner
+            .bytes_sent
+            .fetch_add(size as u64, Ordering::Relaxed);
     }
 
     pub fn block_received(&self, size: usize) {
         self.inner.blocks_received.fetch_add(1, Ordering::Relaxed);
-        self.inner.bytes_received.fetch_add(size as u64, Ordering::Relaxed);
+        self.inner
+            .bytes_received
+            .fetch_add(size as u64, Ordering::Relaxed);
     }
 
     pub fn blocks_sent(&self) -> u64 {
@@ -125,7 +129,9 @@ impl Metrics {
     // Block exchange latency tracking
 
     pub fn record_exchange_time(&self, duration_ms: u64) {
-        self.inner.total_exchange_time_ms.fetch_add(duration_ms, Ordering::Relaxed);
+        self.inner
+            .total_exchange_time_ms
+            .fetch_add(duration_ms, Ordering::Relaxed);
         self.inner.total_exchanges.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -142,7 +148,8 @@ impl Metrics {
     // Uptime
 
     pub fn uptime_seconds(&self) -> u64 {
-        self.inner.start_time
+        self.inner
+            .start_time
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()

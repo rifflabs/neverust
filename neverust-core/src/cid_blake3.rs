@@ -98,7 +98,8 @@ impl StreamingVerifier {
     /// Finalize and get the computed CID
     pub fn finalize(self) -> Cid {
         let hash = self.hasher.finalize();
-        let mh = Multihash::wrap(BLAKE3_CODE, hash.as_bytes()).expect("BLAKE3 hash length is valid");
+        let mh =
+            Multihash::wrap(BLAKE3_CODE, hash.as_bytes()).expect("BLAKE3 hash length is valid");
         Cid::new_v1(0x55, mh)
     }
 
@@ -152,7 +153,8 @@ pub fn parse_cid(bytes: &[u8]) -> Result<Cid, CidError> {
 
 /// Parse a CID from string
 pub fn parse_cid_str(s: &str) -> Result<Cid, CidError> {
-    s.parse().map_err(|e| CidError::InvalidCid(format!("{}", e)))
+    s.parse()
+        .map_err(|e| CidError::InvalidCid(format!("{}", e)))
 }
 
 #[cfg(test)]

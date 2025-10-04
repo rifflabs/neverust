@@ -5,16 +5,16 @@
 
 use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::{
-    ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol,
-    StreamProtocol, handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
+    handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
+    ConnectionHandler, ConnectionHandlerEvent, KeepAlive, StreamProtocol, SubstreamProtocol,
 };
 use libp2p::PeerId;
 use std::io;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::storage::BlockStore;
 use crate::metrics::Metrics;
+use crate::storage::BlockStore;
 
 pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
 
@@ -37,7 +37,13 @@ pub struct BlockExcHandler {
 }
 
 impl BlockExcHandler {
-    pub fn new(peer_id: PeerId, block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: Metrics) -> Self {
+    pub fn new(
+        peer_id: PeerId,
+        block_store: Arc<BlockStore>,
+        mode: String,
+        price_per_byte: u64,
+        metrics: Metrics,
+    ) -> Self {
         BlockExcHandler {
             peer_id,
             keep_alive: KeepAlive::Yes,
@@ -54,6 +60,7 @@ impl BlockExcHandler {
 impl ConnectionHandler for BlockExcHandler {
     type FromBehaviour = ();
     type ToBehaviour = ();
+    #[allow(deprecated)]
     type Error = io::Error;
     type InboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
@@ -61,10 +68,7 @@ impl ConnectionHandler for BlockExcHandler {
     type OutboundOpenInfo = ();
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
-        SubstreamProtocol::new(
-            ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
-            ()
-        )
+        SubstreamProtocol::new(ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)), ())
     }
 
     fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {}
@@ -73,6 +77,7 @@ impl ConnectionHandler for BlockExcHandler {
         self.keep_alive
     }
 
+    #[allow(deprecated)]
     fn poll(
         &mut self,
         _cx: &mut std::task::Context<'_>,
@@ -88,13 +93,16 @@ impl ConnectionHandler for BlockExcHandler {
         // For Archivist testnet compatibility, those nodes will reject client-initiated streams,
         // but Neverust nodes accept bidirectional BlockExc
         if !self.outbound_requested && !self.has_active_stream {
-            info!("BlockExc: Requesting outbound stream to peer {}", self.peer_id);
+            info!(
+                "BlockExc: Requesting outbound stream to peer {}",
+                self.peer_id
+            );
             self.outbound_requested = true;
             return std::task::Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
                 protocol: SubstreamProtocol::new(
                     ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
-                    ()
-                )
+                    (),
+                ),
             });
         }
 
@@ -125,9 +133,11 @@ impl ConnectionHandler for BlockExcHandler {
 
                 // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
-                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
-                    use crate::messages::{Message, Block as MsgBlock, decode_message, encode_message};
+                    use crate::messages::{
+                        decode_message, encode_message, Block as MsgBlock, Message,
+                    };
                     use cid::Cid;
+                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
 
                     let mut stream = stream;
                     info!("BlockExc: Started reading from {}", peer_id);
@@ -158,13 +168,17 @@ impl ConnectionHandler for BlockExcHandler {
                                                 let mut response_blocks = Vec::new();
 
                                                 for entry in &wantlist.entries {
-                                                    if let Ok(cid) = Cid::try_from(&entry.block[..]) {
-                                                        if let Ok(block) = block_store.get(&cid).await {
+                                                    if let Ok(cid) = Cid::try_from(&entry.block[..])
+                                                    {
+                                                        if let Ok(block) =
+                                                            block_store.get(&cid).await
+                                                        {
                                                             let block_size = block.data.len();
                                                             info!("BlockExc: Have block {}, sending to {} (altruistic) - {} bytes", cid, peer_id, block_size);
                                                             metrics.block_sent(block_size); // Track P2P traffic!
                                                             response_blocks.push(MsgBlock {
-                                                                prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                prefix: cid.to_bytes()[0..4]
+                                                                    .to_vec(),
                                                                 data: block.data,
                                                             });
                                                         }
@@ -180,8 +194,15 @@ impl ConnectionHandler for BlockExcHandler {
                                                     payment: None,
                                                 };
 
-                                                if let Ok(response_bytes) = encode_message(&response) {
-                                                    if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                if let Ok(response_bytes) =
+                                                    encode_message(&response)
+                                                {
+                                                    if let Err(e) = write_length_prefixed(
+                                                        &mut stream,
+                                                        &response_bytes,
+                                                    )
+                                                    .await
+                                                    {
                                                         warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
                                                         break;
                                                     }
@@ -198,13 +219,18 @@ impl ConnectionHandler for BlockExcHandler {
                                                     let mut response_blocks = Vec::new();
 
                                                     for entry in &wantlist.entries {
-                                                        if let Ok(cid) = Cid::try_from(&entry.block[..]) {
-                                                            if let Ok(block) = block_store.get(&cid).await {
+                                                        if let Ok(cid) =
+                                                            Cid::try_from(&entry.block[..])
+                                                        {
+                                                            if let Ok(block) =
+                                                                block_store.get(&cid).await
+                                                            {
                                                                 let block_size = block.data.len();
                                                                 info!("BlockExc: Have block {}, sending to {} (paid) - {} bytes", cid, peer_id, block_size);
                                                                 metrics.block_sent(block_size); // Track P2P traffic!
                                                                 response_blocks.push(MsgBlock {
-                                                                    prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                    prefix: cid.to_bytes()[0..4]
+                                                                        .to_vec(),
                                                                     data: block.data,
                                                                 });
                                                             }
@@ -220,8 +246,15 @@ impl ConnectionHandler for BlockExcHandler {
                                                         payment: None,
                                                     };
 
-                                                    if let Ok(response_bytes) = encode_message(&response) {
-                                                        if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                    if let Ok(response_bytes) =
+                                                        encode_message(&response)
+                                                    {
+                                                        if let Err(e) = write_length_prefixed(
+                                                            &mut stream,
+                                                            &response_bytes,
+                                                        )
+                                                        .await
+                                                        {
                                                             warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
                                                             break;
                                                         }
@@ -232,16 +265,26 @@ impl ConnectionHandler for BlockExcHandler {
                                                     let mut block_presences = Vec::new();
 
                                                     for entry in &wantlist.entries {
-                                                        if let Ok(cid) = Cid::try_from(&entry.block[..]) {
-                                                            if let Ok(block) = block_store.get(&cid).await {
-                                                                let block_price = (block.data.len() as u64) * price_per_byte;
+                                                        if let Ok(cid) =
+                                                            Cid::try_from(&entry.block[..])
+                                                        {
+                                                            if let Ok(block) =
+                                                                block_store.get(&cid).await
+                                                            {
+                                                                let block_price = (block.data.len()
+                                                                    as u64)
+                                                                    * price_per_byte;
                                                                 info!("BlockExc: Block {} available for {} units", cid, block_price);
 
-                                                                block_presences.push(BlockPresence {
-                                                                    cid: cid.to_bytes(),
-                                                                    r#type: 0, // Have
-                                                                    price: block_price.to_le_bytes().to_vec(),
-                                                                });
+                                                                block_presences.push(
+                                                                    BlockPresence {
+                                                                        cid: cid.to_bytes(),
+                                                                        r#type: 0, // Have
+                                                                        price: block_price
+                                                                            .to_le_bytes()
+                                                                            .to_vec(),
+                                                                    },
+                                                                );
                                                             }
                                                         }
                                                     }
@@ -255,8 +298,15 @@ impl ConnectionHandler for BlockExcHandler {
                                                         payment: None,
                                                     };
 
-                                                    if let Ok(response_bytes) = encode_message(&response) {
-                                                        if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                    if let Ok(response_bytes) =
+                                                        encode_message(&response)
+                                                    {
+                                                        if let Err(e) = write_length_prefixed(
+                                                            &mut stream,
+                                                            &response_bytes,
+                                                        )
+                                                        .await
+                                                        {
                                                             warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
                                                             break;
                                                         }
@@ -268,7 +318,10 @@ impl ConnectionHandler for BlockExcHandler {
                                         }
                                     }
                                     Err(e) => {
-                                        warn!("BlockExc: Failed to decode message from {}: {}", peer_id, e);
+                                        warn!(
+                                            "BlockExc: Failed to decode message from {}: {}",
+                                            peer_id, e
+                                        );
                                     }
                                 }
                             }
@@ -296,11 +349,12 @@ impl ConnectionHandler for BlockExcHandler {
 
                 // Spawn task to handle outbound stream - send WantList and receive blocks
                 tokio::spawn(async move {
-                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
-                    use crate::messages::{Message, Wantlist, WantlistEntry, WantType, decode_message, encode_message};
                     use crate::cid_blake3::blake3_cid;
+                    use crate::messages::{
+                        decode_message, encode_message, Message, WantType, Wantlist, WantlistEntry,
+                    };
                     use crate::storage::Block;
-                    
+                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
 
                     let mut stream = stream;
 
@@ -308,7 +362,10 @@ impl ConnectionHandler for BlockExcHandler {
                     let test_data = b"Hello, Archivist!";
                     let test_cid = blake3_cid(test_data).expect("Failed to create test CID");
 
-                    info!("BlockExc: Requesting test block {} from {}", test_cid, peer_id);
+                    info!(
+                        "BlockExc: Requesting test block {} from {}",
+                        test_cid, peer_id
+                    );
 
                     // Create WantList with test CID
                     let wantlist = Wantlist {
@@ -339,7 +396,11 @@ impl ConnectionHandler for BlockExcHandler {
                         }
                     };
 
-                    info!("BlockExc: Sending WantList ({} bytes) to {}", msg_bytes.len(), peer_id);
+                    info!(
+                        "BlockExc: Sending WantList ({} bytes) to {}",
+                        msg_bytes.len(),
+                        peer_id
+                    );
                     if let Err(e) = write_length_prefixed(&mut stream, &msg_bytes).await {
                         warn!("BlockExc: Failed to send WantList to {}: {}", peer_id, e);
                         return;
@@ -349,12 +410,20 @@ impl ConnectionHandler for BlockExcHandler {
                     loop {
                         match read_length_prefixed(&mut stream, 100 * 1024 * 1024).await {
                             Ok(data) => {
-                                info!("BlockExc: Received {} bytes from {} on outbound stream", data.len(), peer_id);
+                                info!(
+                                    "BlockExc: Received {} bytes from {} on outbound stream",
+                                    data.len(),
+                                    peer_id
+                                );
 
                                 match decode_message(&data) {
                                     Ok(response) => {
-                                        info!("BlockExc: Response from {}: blocks={}, presences={}",
-                                            peer_id, response.payload.len(), response.block_presences.len());
+                                        info!(
+                                            "BlockExc: Response from {}: blocks={}, presences={}",
+                                            peer_id,
+                                            response.payload.len(),
+                                            response.block_presences.len()
+                                        );
 
                                         // Store received blocks
                                         for msg_block in &response.payload {
@@ -374,7 +443,8 @@ impl ConnectionHandler for BlockExcHandler {
                                                     match block_store.put(block).await {
                                                         Ok(_) => {
                                                             info!("BlockExc: Stored block {} from {} - {} bytes", computed_cid, peer_id, block_size);
-                                                            metrics.block_received(block_size); // Track P2P traffic!
+                                                            metrics.block_received(block_size);
+                                                            // Track P2P traffic!
                                                         }
                                                         Err(e) => {
                                                             warn!("BlockExc: Failed to store block: {}", e);
@@ -389,17 +459,26 @@ impl ConnectionHandler for BlockExcHandler {
 
                                         // Log block presences
                                         for presence in &response.block_presences {
-                                            info!("BlockExc: Block presence type={:?}", presence.r#type);
+                                            info!(
+                                                "BlockExc: Block presence type={:?}",
+                                                presence.r#type
+                                            );
                                         }
                                     }
                                     Err(e) => {
-                                        warn!("BlockExc: Failed to decode response from {}: {}", peer_id, e);
+                                        warn!(
+                                            "BlockExc: Failed to decode response from {}: {}",
+                                            peer_id, e
+                                        );
                                     }
                                 }
                             }
                             Err(e) => {
                                 if e.kind() != io::ErrorKind::UnexpectedEof {
-                                    warn!("BlockExc: Error reading from {} on outbound: {}", peer_id, e);
+                                    warn!(
+                                        "BlockExc: Error reading from {} on outbound: {}",
+                                        peer_id, e
+                                    );
                                 }
                                 break;
                             }
@@ -410,7 +489,10 @@ impl ConnectionHandler for BlockExcHandler {
                 });
             }
             ConnectionEvent::DialUpgradeError(err) => {
-                warn!("BlockExc: Dial upgrade error to {}: {:?}", self.peer_id, err);
+                warn!(
+                    "BlockExc: Dial upgrade error to {}: {:?}",
+                    self.peer_id, err
+                );
             }
             ConnectionEvent::AddressChange(_)
             | ConnectionEvent::ListenUpgradeError(_)
@@ -429,8 +511,18 @@ pub struct BlockExcBehaviour {
 }
 
 impl BlockExcBehaviour {
-    pub fn new(block_store: Arc<BlockStore>, mode: String, price_per_byte: u64, metrics: Metrics) -> Self {
-        Self { block_store, mode, price_per_byte, metrics }
+    pub fn new(
+        block_store: Arc<BlockStore>,
+        mode: String,
+        price_per_byte: u64,
+        metrics: Metrics,
+    ) -> Self {
+        Self {
+            block_store,
+            mode,
+            price_per_byte,
+            metrics,
+        }
     }
 }
 
@@ -445,7 +537,13 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _local_addr: &libp2p::Multiaddr,
         _remote_addr: &libp2p::Multiaddr,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte, self.metrics.clone()))
+        Ok(BlockExcHandler::new(
+            peer,
+            self.block_store.clone(),
+            self.mode.clone(),
+            self.price_per_byte,
+            self.metrics.clone(),
+        ))
     }
 
     fn handle_established_outbound_connection(
@@ -455,7 +553,13 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         _addr: &libp2p::Multiaddr,
         _role_override: libp2p::core::Endpoint,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(BlockExcHandler::new(peer, self.block_store.clone(), self.mode.clone(), self.price_per_byte, self.metrics.clone()))
+        Ok(BlockExcHandler::new(
+            peer,
+            self.block_store.clone(),
+            self.mode.clone(),
+            self.price_per_byte,
+            self.metrics.clone(),
+        ))
     }
 
     fn on_swarm_event(&mut self, _event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {}
@@ -472,7 +576,8 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         &mut self,
         _cx: &mut std::task::Context<'_>,
         _params: &mut impl libp2p::swarm::PollParameters,
-    ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>> {
+    ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
+    {
         std::task::Poll::Pending
     }
 }

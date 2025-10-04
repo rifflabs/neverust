@@ -15,11 +15,11 @@ pub mod spr;
 pub mod storage;
 pub mod traffic;
 
+pub use botg::{BlockId, BlockRollup, BoTgConfig, BoTgError, BoTgProtocol};
+pub use cid_blake3::{blake3_cid, blake3_hash, verify_blake3, CidError, StreamingVerifier};
 pub use config::Config;
+pub use metrics::Metrics;
 pub use p2p::{create_swarm, Behaviour, P2PError};
 pub use runtime::run_node;
 pub use spr::{parse_spr_records, SprError};
-pub use botg::{BoTgProtocol, BoTgConfig, BlockId, BlockRollup, BoTgError};
-pub use cid_blake3::{blake3_cid, blake3_hash, verify_blake3, StreamingVerifier, CidError};
 pub use storage::{Block, BlockStore, BlockStoreStats, StorageError};
-pub use metrics::Metrics;

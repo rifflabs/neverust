@@ -35,7 +35,7 @@ pub struct Wantlist {
     pub full: bool,
 }
 
-#[derive(Clone, PartialEq,  prost::Message)]
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct WantlistEntry {
     #[prost(bytes = "vec", tag = "1")]
     pub block: Vec<u8>,
@@ -60,7 +60,7 @@ pub enum WantType {
     WantHave = 1,
 }
 
-#[derive(Clone, PartialEq,  prost::Message)]
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct Block {
     #[prost(bytes = "vec", tag = "1")]
     pub prefix: Vec<u8>,
@@ -69,7 +69,7 @@ pub struct Block {
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, PartialEq,  prost::Message)]
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct BlockPresence {
     #[prost(bytes = "vec", tag = "1")]
     pub cid: Vec<u8>,
@@ -88,13 +88,13 @@ pub enum BlockPresenceType {
     PresenceDontHave = 1,
 }
 
-#[derive(Clone, PartialEq,  prost::Message)]
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct AccountMessage {
     #[prost(bytes = "vec", tag = "1")]
     pub address: Vec<u8>,
 }
 
-#[derive(Clone, PartialEq,  prost::Message)]
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct StateChannelUpdate {
     #[prost(bytes = "vec", tag = "1")]
     pub update: Vec<u8>,
