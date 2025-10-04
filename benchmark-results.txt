@@ -1,0 +1,133 @@
+    Finished `bench` profile [optimized] target(s) in 1.34s
+     Running unittests src/main.rs (target/release/deps/neverust-dc3e8081d01781ac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches/p2p_benchmarks.rs (target/release/deps/p2p_benchmarks-8347fed20870738d)
+Benchmarking block_creation_1kb
+Benchmarking block_creation_1kb: Warming up for 3.0000 s
+Benchmarking block_creation_1kb: Collecting 100 samples in estimated 5.0008 s (4.3M iterations)
+Benchmarking block_creation_1kb: Analyzing
+block_creation_1kb      time:   [1.1573 µs 1.1598 µs 1.1626 µs]
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  8 (8.00%) high severe
+
+Benchmarking block_creation_1mb
+Benchmarking block_creation_1mb: Warming up for 3.0000 s
+Benchmarking block_creation_1mb: Collecting 100 samples in estimated 5.1601 s (50k iterations)
+Benchmarking block_creation_1mb: Analyzing
+block_creation_1mb      time:   [101.40 µs 101.60 µs 101.88 µs]
+Found 9 outliers among 100 measurements (9.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  5 (5.00%) high severe
+
+Benchmarking block_creation_10mb
+Benchmarking block_creation_10mb: Warming up for 3.0000 s
+
+Warning: Unable to complete 100 samples in 5.0s. You may wish to increase target time to 5.1s, enable flat sampling, or reduce sample count to 60.
+Benchmarking block_creation_10mb: Collecting 100 samples in estimated 5.1343 s (5050 iterations)
+Benchmarking block_creation_10mb: Analyzing
+block_creation_10mb     time:   [1.0196 ms 1.0230 ms 1.0281 ms]
+Found 12 outliers among 100 measurements (12.00%)
+  4 (4.00%) high mild
+  8 (8.00%) high severe
+
+Benchmarking blockstore_put_1kb
+Benchmarking blockstore_put_1kb: Warming up for 3.0000 s
+Benchmarking blockstore_put_1kb: Collecting 100 samples in estimated 5.0003 s (34M iterations)
+Benchmarking blockstore_put_1kb: Analyzing
+blockstore_put_1kb      time:   [147.95 ns 148.97 ns 150.43 ns]
+Found 15 outliers among 100 measurements (15.00%)
+  4 (4.00%) high mild
+  11 (11.00%) high severe
+
+Benchmarking blockstore_get_1kb
+Benchmarking blockstore_get_1kb: Warming up for 3.0000 s
+Benchmarking blockstore_get_1kb: Collecting 100 samples in estimated 5.0007 s (30M iterations)
+Benchmarking blockstore_get_1kb: Analyzing
+blockstore_get_1kb      time:   [165.21 ns 166.19 ns 167.43 ns]
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+
+Benchmarking blockstore_has_1kb
+Benchmarking blockstore_has_1kb: Warming up for 3.0000 s
+Benchmarking blockstore_has_1kb: Collecting 100 samples in estimated 5.0002 s (38M iterations)
+Benchmarking blockstore_has_1kb: Analyzing
+blockstore_has_1kb      time:   [131.00 ns 131.48 ns 132.06 ns]
+Found 8 outliers among 100 measurements (8.00%)
+  8 (8.00%) high severe
+
+Benchmarking swarm_creation
+Benchmarking swarm_creation: Warming up for 3.0000 s
+Benchmarking swarm_creation: Collecting 100 samples in estimated 5.0423 s (101k iterations)
+Benchmarking swarm_creation: Analyzing
+swarm_creation          time:   [49.887 µs 50.102 µs 50.367 µs]
+Found 15 outliers among 100 measurements (15.00%)
+  4 (4.00%) high mild
+  11 (11.00%) high severe
+
+Benchmarking metrics_record_block_sent
+Benchmarking metrics_record_block_sent: Warming up for 3.0000 s
+Benchmarking metrics_record_block_sent: Collecting 100 samples in estimated 5.0000 s (629M iterations)
+Benchmarking metrics_record_block_sent: Analyzing
+metrics_record_block_sent
+                        time:   [7.9349 ns 7.9455 ns 7.9597 ns]
+Found 9 outliers among 100 measurements (9.00%)
+  3 (3.00%) high mild
+  6 (6.00%) high severe
+
+Benchmarking metrics_record_peer_connected
+Benchmarking metrics_record_peer_connected: Warming up for 3.0000 s
+Benchmarking metrics_record_peer_connected: Collecting 100 samples in estimated 5.0000 s (629M iterations)
+Benchmarking metrics_record_peer_connected: Analyzing
+metrics_record_peer_connected
+                        time:   [7.9425 ns 7.9500 ns 7.9592 ns]
+Found 7 outliers among 100 measurements (7.00%)
+  3 (3.00%) high mild
+  4 (4.00%) high severe
+
+Benchmarking metrics_to_prometheus
+Benchmarking metrics_to_prometheus: Warming up for 3.0000 s
+Benchmarking metrics_to_prometheus: Collecting 100 samples in estimated 5.0001 s (28M iterations)
+Benchmarking metrics_to_prometheus: Analyzing
+metrics_to_prometheus   time:   [178.89 ns 179.32 ns 179.92 ns]
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) high mild
+  6 (6.00%) high severe
+
+Benchmarking concurrent_operations/concurrent_puts/1
+Benchmarking concurrent_operations/concurrent_puts/1: Warming up for 3.0000 s
+Benchmarking concurrent_operations/concurrent_puts/1: Collecting 100 samples in estimated 5.1719 s (71k iterations)
+Benchmarking concurrent_operations/concurrent_puts/1: Analyzing
+concurrent_operations/concurrent_puts/1
+                        time:   [67.401 µs 71.191 µs 73.597 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  3 (3.00%) low severe
+  3 (3.00%) low mild
+  1 (1.00%) high mild
+Benchmarking concurrent_operations/concurrent_puts/10
+Benchmarking concurrent_operations/concurrent_puts/10: Warming up for 3.0000 s
+Benchmarking concurrent_operations/concurrent_puts/10: Collecting 100 samples in estimated 5.0768 s (61k iterations)
+Benchmarking concurrent_operations/concurrent_puts/10: Analyzing
+concurrent_operations/concurrent_puts/10
+                        time:   [82.836 µs 84.037 µs 85.478 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+Benchmarking concurrent_operations/concurrent_puts/100
+Benchmarking concurrent_operations/concurrent_puts/100: Warming up for 3.0000 s
+Benchmarking concurrent_operations/concurrent_puts/100: Collecting 100 samples in estimated 5.3653 s (15k iterations)
+Benchmarking concurrent_operations/concurrent_puts/100: Analyzing
+concurrent_operations/concurrent_puts/100
+                        time:   [345.82 µs 354.73 µs 365.90 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low mild
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+
