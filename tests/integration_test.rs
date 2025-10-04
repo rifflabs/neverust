@@ -147,7 +147,6 @@ async fn test_dial_bootstrap_node() {
         let mut noise_negotiated = false;
         let mut mplex_negotiated = false;
         let mut connection_established = false;
-        let mut ping_received = false;
 
         loop {
             if let Some(event) = swarm.next().await {
@@ -173,7 +172,6 @@ async fn test_dial_bootstrap_node() {
                     }
                     SwarmEvent::Behaviour(event) => {
                         info!("📨 Behaviour event: {:?}", event);
-                        ping_received = true;
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                         warn!("❌ Connection error to {:?}: {}", peer_id, error);
@@ -292,8 +290,8 @@ async fn test_connect_and_verify_all_protocols() {
         connection_established: bool,
         ping_sent: bool,
         ping_received: bool,
-        blockexc_stream_requested: bool,
-        blockexc_stream_negotiated: bool,
+        _blockexc_stream_requested: bool,
+        _blockexc_stream_negotiated: bool,
     }
 
     let mut steps = ProtocolSteps::default();

@@ -114,7 +114,6 @@ impl Config {
         Ok(config)
     }
 
-
     /// Fetch or determine bootstrap nodes
     ///
     /// Priority:
@@ -186,18 +185,10 @@ impl Config {
         // Fetch SPR records from testnet
         let response = reqwest::get("https://spr.archivist.storage/testnet")
             .await
-            .map_err(|e| {
-                ConfigError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?
+            .map_err(|e| ConfigError::Io(std::io::Error::other(e.to_string())))?
             .text()
             .await
-            .map_err(|e| {
-                ConfigError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| ConfigError::Io(std::io::Error::other(e.to_string())))?;
 
         // Parse SPR records
         let records = parse_spr_records(&response).map_err(|e| {
