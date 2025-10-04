@@ -59,6 +59,9 @@ pub fn create_router(block_store: Arc<BlockStore>) -> Router {
         .route("/metrics", get(metrics))
         .route("/api/v1/blocks", post(store_block))
         .route("/api/v1/blocks/:cid", get(get_block))
+        // Archivist-compatible endpoints
+        .route("/api/archivist/v1/data", post(archivist_upload))
+        .route("/api/archivist/v1/data/:cid/network/stream", get(archivist_download))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
@@ -168,6 +171,66 @@ async fn get_block(
         data: base64::prelude::BASE64_STANDARD.encode(&block.data),
         size: block.size(),
     }))
+}
+
+/// Archivist-compatible upload endpoint (POST /api/archivist/v1/data)
+/// Returns CID as plain text
+async fn archivist_upload(
+    State(state): State<ApiState>,
+    body: bytes::Bytes,
+) -> Result<String, ApiError> {
+    if body.is_empty() {
+        return Err(ApiError::BadRequest("Empty data".to_string()));
+    }
+
+    info!("Archivist API: Uploading data ({} bytes)", body.len());
+
+    // Create block from data
+    let block = Block::new(body.to_vec())
+        .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
+
+    let cid = block.cid;
+
+    // Store in BlockStore
+    state
+        .block_store
+        .put(block)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+
+    info!("Archivist API: Uploaded {} ({} bytes)", cid, body.len());
+
+    // Return CID as plain text (Archivist format)
+    Ok(cid.to_string())
+}
+
+/// Archivist-compatible download endpoint (GET /api/archivist/v1/data/:cid/network/stream)
+/// Returns raw binary data
+async fn archivist_download(
+    State(state): State<ApiState>,
+    Path(cid_str): Path<String>,
+) -> Result<Vec<u8>, ApiError> {
+    info!("Archivist API: Downloading {}", cid_str);
+
+    // Parse CID
+    let cid = cid_str
+        .parse()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
+
+    // Get block from store
+    let block = state
+        .block_store
+        .get(&cid)
+        .await
+        .map_err(|e| match e {
+            StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.clone()),
+            _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
+        })?;
+
+    info!("Archivist API: Downloaded {} ({} bytes)", cid_str, block.size());
+
+    // Return raw bytes (Archivist format)
+    Ok(block.data)
 }
 
 /// API error type
