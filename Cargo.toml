@@ -31,6 +31,7 @@ predicates = "3"
 tempfile = "3"
 futures-util = "0.3"
 libp2p = { version = "0.52", features = ["tcp", "ping", "tokio", "macros", "secp256k1", "noise"] }
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 
 [profile.release]
 lto = true
@@ -40,3 +41,7 @@ opt-level = 3
 [profile.dev]
 opt-level = 0
 debug = true
+
+[[bench]]
+name = "p2p_benchmarks"
+harness = false

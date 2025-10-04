@@ -23,3 +23,9 @@ target
 .mcp.json
 synthesis
 .playwright-mcp/
+
+# Playwright
+node_modules/
+playwright-report/
+test-results/
+.playwright/
