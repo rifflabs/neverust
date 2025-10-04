@@ -21,3 +21,4 @@ target
 #.idea/
 # AI configuration (user-specific)
 .mcp.json
+synthesis
