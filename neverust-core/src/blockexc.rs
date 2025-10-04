@@ -105,7 +105,7 @@ impl ConnectionHandler for BlockExcHandler {
                 let block_store = self.block_store.clone();
                 let mode = self.mode.clone();
                 let price_per_byte = self.price_per_byte;
-                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {})", peer_id, mode);
+                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {}, price: {} per byte)", peer_id, mode, price_per_byte);
 
                 // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
@@ -134,32 +134,25 @@ impl ConnectionHandler for BlockExcHandler {
 
                                         // If they sent a wantlist, respond with blocks we have
                                         if let Some(wantlist) = msg.wantlist {
-                                            // ALTRUISTIC MODE: Serve blocks freely without payment
-                                            // MARKETPLACE MODE: Check payment before serving (TODO)
+                                            use crate::messages::BlockPresence;
 
                                             if mode == "altruistic" {
+                                                // ALTRUISTIC MODE: Serve blocks freely without payment
                                                 info!("BlockExc: ALTRUISTIC MODE - serving blocks freely to {}", peer_id);
                                                 let mut response_blocks = Vec::new();
 
                                                 for entry in &wantlist.entries {
-                                                    // Parse CID from bytes
                                                     if let Ok(cid) = Cid::try_from(&entry.block[..]) {
-                                                        // Check if we have this block
                                                         if let Ok(block) = block_store.get(&cid).await {
                                                             info!("BlockExc: Have block {}, sending to {} (altruistic)", cid, peer_id);
-
-                                                            // Convert to protobuf Block
                                                             response_blocks.push(MsgBlock {
-                                                                prefix: cid.to_bytes()[0..4].to_vec(), // CID prefix
+                                                                prefix: cid.to_bytes()[0..4].to_vec(),
                                                                 data: block.data,
                                                             });
-                                                        } else {
-                                                            info!("BlockExc: Don't have block {}", cid);
                                                         }
                                                     }
                                                 }
 
-                                                // Send response
                                                 let response = Message {
                                                     wantlist: None,
                                                     payload: response_blocks,
@@ -176,9 +169,79 @@ impl ConnectionHandler for BlockExcHandler {
                                                     }
                                                 }
                                             } else if mode == "marketplace" {
-                                                info!("BlockExc: MARKETPLACE MODE - payment validation not yet implemented");
-                                                // TODO: Check msg.payment for StateChannelUpdate
-                                                // TODO: Validate payment before serving blocks
+                                                // MARKETPLACE MODE: Check payment before serving
+                                                info!("BlockExc: MARKETPLACE MODE - checking payment from {}", peer_id);
+
+                                                let has_payment = msg.payment.is_some();
+
+                                                if has_payment {
+                                                    info!("BlockExc: Payment received from {}, serving blocks", peer_id);
+                                                    // Payment received - serve blocks
+                                                    let mut response_blocks = Vec::new();
+
+                                                    for entry in &wantlist.entries {
+                                                        if let Ok(cid) = Cid::try_from(&entry.block[..]) {
+                                                            if let Ok(block) = block_store.get(&cid).await {
+                                                                info!("BlockExc: Have block {}, sending to {} (paid)", cid, peer_id);
+                                                                response_blocks.push(MsgBlock {
+                                                                    prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                    data: block.data,
+                                                                });
+                                                            }
+                                                        }
+                                                    }
+
+                                                    let response = Message {
+                                                        wantlist: None,
+                                                        payload: response_blocks,
+                                                        block_presences: vec![],
+                                                        pending_bytes: 0,
+                                                        account: None,
+                                                        payment: None,
+                                                    };
+
+                                                    if let Ok(response_bytes) = encode_message(&response) {
+                                                        if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                            warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
+                                                            break;
+                                                        }
+                                                    }
+                                                } else {
+                                                    // No payment - send block presences with prices
+                                                    info!("BlockExc: No payment from {}, sending presences with prices", peer_id);
+                                                    let mut block_presences = Vec::new();
+
+                                                    for entry in &wantlist.entries {
+                                                        if let Ok(cid) = Cid::try_from(&entry.block[..]) {
+                                                            if let Ok(block) = block_store.get(&cid).await {
+                                                                let block_price = (block.data.len() as u64) * price_per_byte;
+                                                                info!("BlockExc: Block {} available for {} units", cid, block_price);
+
+                                                                block_presences.push(BlockPresence {
+                                                                    cid: cid.to_bytes(),
+                                                                    r#type: 0, // Have
+                                                                    price: block_price.to_le_bytes().to_vec(),
+                                                                });
+                                                            }
+                                                        }
+                                                    }
+
+                                                    let response = Message {
+                                                        wantlist: None,
+                                                        payload: vec![],
+                                                        block_presences,
+                                                        pending_bytes: 0,
+                                                        account: None,
+                                                        payment: None,
+                                                    };
+
+                                                    if let Ok(response_bytes) = encode_message(&response) {
+                                                        if let Err(e) = write_length_prefixed(&mut stream, &response_bytes).await {
+                                                            warn!("BlockExc: Failed to send response to {}: {}", peer_id, e);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
                                             } else {
                                                 warn!("BlockExc: Unknown mode '{}', defaulting to altruistic", mode);
                                             }
