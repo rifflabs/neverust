@@ -237,9 +237,41 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                         warn!("Connection closed with {}: {:?}", peer_id, cause);
                         metrics.peer_disconnected();
                     }
-                    SwarmEvent::Behaviour(_event) => {
-                        // BlockExc events (currently just () as placeholder)
-                        info!("BlockExc event");
+                    SwarmEvent::Behaviour(event) => {
+                        use crate::p2p::BehaviourEvent;
+                        match event {
+                            BehaviourEvent::Identify(identify_event) => {
+                                use libp2p::identify::Event;
+                                match identify_event {
+                                    Event::Received { peer_id, info } => {
+                                        info!(
+                                            "Identified peer {}: protocol_version={}, agent_version={}",
+                                            peer_id, info.protocol_version, info.agent_version
+                                        );
+
+                                        // Detect if peer is Neverust (supports range retrieval)
+                                        let is_neverust = info.agent_version.contains("/neverust/");
+                                        if is_neverust {
+                                            info!("Peer {} is Neverust-capable (supports range retrieval)", peer_id);
+                                        } else {
+                                            info!("Peer {} is Archivist-Node (requires full blocks)", peer_id);
+                                        }
+
+                                        // Log supported protocols
+                                        info!("Peer {} protocols: {:?}", peer_id, info.protocols);
+                                    }
+                                    Event::Sent { peer_id } => {
+                                        info!("Sent identify info to {}", peer_id);
+                                    }
+                                    Event::Pushed { peer_id } => {
+                                        info!("Pushed identify update to {}", peer_id);
+                                    }
+                                    Event::Error { peer_id, error } => {
+                                        warn!("Identify error with {}: {}", peer_id, error);
+                                    }
+                                }
+                            }
+                        }
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         info!("Incoming connection from {} on {}", send_back_addr, local_addr);
