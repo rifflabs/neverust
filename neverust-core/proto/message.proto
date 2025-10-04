@@ -19,6 +19,10 @@ message Message {
       bool cancel = 3;       // whether this revokes an entry
       WantType wantType = 4; // Note: defaults to enum 0, ie Block
       bool sendDontHave = 5; // Note: defaults to false
+      // Neverust extension: Range retrieval for partial blocks
+      uint64 startByte = 6;  // Starting byte offset (inclusive), 0 = from beginning
+      uint64 endByte = 7;    // Ending byte offset (exclusive), 0 = full block
+                             // If both are 0 (default), requests full block (backward compatible)
     }
 
     repeated Entry entries = 1;  // a list of wantlist entries
@@ -28,6 +32,11 @@ message Message {
   message Block {
     bytes prefix = 1; // CID prefix (cid version, multicodec and multihash prefix (type + length)
     bytes data = 2;
+    // Neverust extension: Range response metadata for partial blocks
+    uint64 rangeStart = 3;  // Starting byte offset of this data slice (inclusive)
+    uint64 rangeEnd = 4;    // Ending byte offset of this data slice (exclusive)
+    uint64 totalSize = 5;   // Total size of the complete block
+                            // If all are 0 (default), this is a full block (backward compatible)
   }
 
   enum BlockPresenceType {

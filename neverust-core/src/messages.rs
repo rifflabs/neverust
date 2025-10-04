@@ -51,6 +51,13 @@ pub struct WantlistEntry {
 
     #[prost(bool, tag = "5")]
     pub send_dont_have: bool,
+
+    // Neverust extension: Range retrieval for partial blocks
+    #[prost(uint64, tag = "6")]
+    pub start_byte: u64,
+
+    #[prost(uint64, tag = "7")]
+    pub end_byte: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -67,6 +74,16 @@ pub struct Block {
 
     #[prost(bytes = "vec", tag = "2")]
     pub data: Vec<u8>,
+
+    // Neverust extension: Range response metadata for partial blocks
+    #[prost(uint64, tag = "3")]
+    pub range_start: u64,
+
+    #[prost(uint64, tag = "4")]
+    pub range_end: u64,
+
+    #[prost(uint64, tag = "5")]
+    pub total_size: u64,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -143,6 +160,8 @@ mod tests {
                     cancel: false,
                     want_type: WantType::WantBlock as i32,
                     send_dont_have: false,
+                    start_byte: 0,
+                    end_byte: 0,
                 }],
                 full: false,
             }),
@@ -171,6 +190,9 @@ mod tests {
             payload: vec![Block {
                 prefix: vec![0x12, 0x20], // sha256 multihash prefix
                 data: vec![1, 2, 3, 4, 5],
+                range_start: 0,
+                range_end: 0,
+                total_size: 0,
             }],
             block_presences: vec![],
             pending_bytes: 0,
@@ -220,6 +242,8 @@ mod tests {
                         cancel: false,
                         want_type: WantType::WantBlock as i32,
                         send_dont_have: false,
+                        start_byte: 0,
+                        end_byte: 0,
                     },
                     WantlistEntry {
                         block: vec![4, 5, 6],
@@ -227,6 +251,8 @@ mod tests {
                         cancel: true,
                         want_type: WantType::WantHave as i32,
                         send_dont_have: true,
+                        start_byte: 0,
+                        end_byte: 0,
                     },
                 ],
                 full: true,
@@ -235,10 +261,16 @@ mod tests {
                 Block {
                     prefix: vec![0x12, 0x20],
                     data: vec![7, 8, 9],
+                    range_start: 0,
+                    range_end: 0,
+                    total_size: 0,
                 },
                 Block {
                     prefix: vec![0x12, 0x20],
                     data: vec![10, 11, 12],
+                    range_start: 0,
+                    range_end: 0,
+                    total_size: 0,
                 },
             ],
             block_presences: vec![

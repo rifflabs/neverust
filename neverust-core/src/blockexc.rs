@@ -166,13 +166,44 @@ impl ConnectionHandler for BlockExcHandler {
                                                         if let Ok(block) =
                                                             block_store.get(&cid).await
                                                         {
-                                                            let block_size = block.data.len();
-                                                            info!("BlockExc: Have block {}, sending to {} (altruistic) - {} bytes", cid, peer_id, block_size);
-                                                            metrics.block_sent(block_size); // Track P2P traffic!
+                                                            let total_size = block.data.len() as u64;
+
+                                                            // Check if this is a range request (Neverust extension)
+                                                            let is_range_request = entry.start_byte != 0 || entry.end_byte != 0;
+
+                                                            let (data, range_start, range_end) = if is_range_request {
+                                                                // Range request - extract requested byte range
+                                                                let start = entry.start_byte as usize;
+                                                                let end = if entry.end_byte == 0 {
+                                                                    total_size as usize
+                                                                } else {
+                                                                    std::cmp::min(entry.end_byte as usize, total_size as usize)
+                                                                };
+
+                                                                if start < block.data.len() && start < end {
+                                                                    let range_data = block.data[start..end].to_vec();
+                                                                    info!("BlockExc: Serving range [{}, {}) of block {} to {} (altruistic) - {} bytes of {}",
+                                                                        start, end, cid, peer_id, range_data.len(), total_size);
+                                                                    (range_data, start as u64, end as u64)
+                                                                } else {
+                                                                    warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
+                                                                        start, end, cid, total_size);
+                                                                    continue;
+                                                                }
+                                                            } else {
+                                                                // Full block request (backward compatible)
+                                                                info!("BlockExc: Serving full block {} to {} (altruistic) - {} bytes",
+                                                                    cid, peer_id, total_size);
+                                                                (block.data.clone(), 0, 0)
+                                                            };
+
+                                                            metrics.block_sent(data.len()); // Track P2P traffic!
                                                             response_blocks.push(MsgBlock {
-                                                                prefix: cid.to_bytes()[0..4]
-                                                                    .to_vec(),
-                                                                data: block.data,
+                                                                prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                data,
+                                                                range_start,
+                                                                range_end,
+                                                                total_size,
                                                             });
                                                         }
                                                     }
@@ -218,13 +249,44 @@ impl ConnectionHandler for BlockExcHandler {
                                                             if let Ok(block) =
                                                                 block_store.get(&cid).await
                                                             {
-                                                                let block_size = block.data.len();
-                                                                info!("BlockExc: Have block {}, sending to {} (paid) - {} bytes", cid, peer_id, block_size);
-                                                                metrics.block_sent(block_size); // Track P2P traffic!
+                                                                let total_size = block.data.len() as u64;
+
+                                                                // Check if this is a range request (Neverust extension)
+                                                                let is_range_request = entry.start_byte != 0 || entry.end_byte != 0;
+
+                                                                let (data, range_start, range_end) = if is_range_request {
+                                                                    // Range request - extract requested byte range
+                                                                    let start = entry.start_byte as usize;
+                                                                    let end = if entry.end_byte == 0 {
+                                                                        total_size as usize
+                                                                    } else {
+                                                                        std::cmp::min(entry.end_byte as usize, total_size as usize)
+                                                                    };
+
+                                                                    if start < block.data.len() && start < end {
+                                                                        let range_data = block.data[start..end].to_vec();
+                                                                        info!("BlockExc: Serving range [{}, {}) of block {} to {} (paid) - {} bytes of {}",
+                                                                            start, end, cid, peer_id, range_data.len(), total_size);
+                                                                        (range_data, start as u64, end as u64)
+                                                                    } else {
+                                                                        warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
+                                                                            start, end, cid, total_size);
+                                                                        continue;
+                                                                    }
+                                                                } else {
+                                                                    // Full block request (backward compatible)
+                                                                    info!("BlockExc: Serving full block {} to {} (paid) - {} bytes",
+                                                                        cid, peer_id, total_size);
+                                                                    (block.data.clone(), 0, 0)
+                                                                };
+
+                                                                metrics.block_sent(data.len()); // Track P2P traffic!
                                                                 response_blocks.push(MsgBlock {
-                                                                    prefix: cid.to_bytes()[0..4]
-                                                                        .to_vec(),
-                                                                    data: block.data,
+                                                                    prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                    data,
+                                                                    range_start,
+                                                                    range_end,
+                                                                    total_size,
                                                                 });
                                                             }
                                                         }
@@ -368,6 +430,8 @@ impl ConnectionHandler for BlockExcHandler {
                             cancel: false,
                             want_type: WantType::WantBlock as i32,
                             send_dont_have: true,
+                            start_byte: 0, // Full block (backward compatible)
+                            end_byte: 0,   // Full block (backward compatible)
                         }],
                         full: true,
                     };
