@@ -8,17 +8,23 @@ use axum::{
     Json, Router,
 };
 use base64::Engine;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use crate::storage::{Block, BlockStore, StorageError};
+use crate::metrics::Metrics;
+use crate::botg::BoTgProtocol;
 
 /// API state shared across handlers
 #[derive(Clone)]
 pub struct ApiState {
     pub block_store: Arc<BlockStore>,
+    pub metrics: Metrics,
+    pub peer_id: String,
+    pub botg: Arc<BoTgProtocol>,
 }
 
 /// Response for storing a block
@@ -51,17 +57,24 @@ pub struct ErrorResponse {
 }
 
 /// Create the REST API router
-pub fn create_router(block_store: Arc<BlockStore>) -> Router {
-    let state = ApiState { block_store };
+pub fn create_router(block_store: Arc<BlockStore>, metrics: Metrics, peer_id: String, botg: Arc<BoTgProtocol>) -> Router {
+    let state = ApiState {
+        block_store,
+        metrics,
+        peer_id,
+        botg,
+    };
 
     Router::new()
         .route("/health", get(health_check))
-        .route("/metrics", get(metrics))
+        .route("/metrics", get(metrics_endpoint))
         .route("/api/v1/blocks", post(store_block))
         .route("/api/v1/blocks/:cid", get(get_block))
         // Archivist-compatible endpoints
         .route("/api/archivist/v1/data", post(archivist_upload))
         .route("/api/archivist/v1/data/:cid/network/stream", get(archivist_download))
+        .route("/api/archivist/v1/peer-id", get(peer_id_endpoint))
+        .route("/api/archivist/v1/stats", get(archivist_stats))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
@@ -78,29 +91,11 @@ async fn health_check(State(state): State<ApiState>) -> impl IntoResponse {
 }
 
 /// Prometheus metrics endpoint
-async fn metrics(State(state): State<ApiState>) -> impl IntoResponse {
+async fn metrics_endpoint(State(state): State<ApiState>) -> impl IntoResponse {
     let stats = state.block_store.stats().await;
 
-    // Generate Prometheus-compatible metrics in text format
-    let metrics = format!(
-        "# HELP neverust_block_count Total number of blocks stored\n\
-         # TYPE neverust_block_count gauge\n\
-         neverust_block_count {}\n\
-         \n\
-         # HELP neverust_block_bytes Total bytes of block data stored\n\
-         # TYPE neverust_block_bytes gauge\n\
-         neverust_block_bytes {}\n\
-         \n\
-         # HELP neverust_uptime_seconds Time since node started in seconds\n\
-         # TYPE neverust_uptime_seconds counter\n\
-         neverust_uptime_seconds {}\n",
-        stats.block_count,
-        stats.total_size,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    );
+    // Generate Prometheus-compatible metrics using the Metrics module
+    let metrics = state.metrics.to_prometheus(stats.block_count, stats.total_size);
 
     (
         StatusCode::OK,
@@ -217,20 +212,90 @@ async fn archivist_download(
         .parse()
         .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
 
-    // Get block from store
-    let block = state
-        .block_store
-        .get(&cid)
-        .await
-        .map_err(|e| match e {
-            StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.clone()),
-            _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
-        })?;
+    // Try to get block from local store first
+    match state.block_store.get(&cid).await {
+        Ok(block) => {
+            info!("Archivist API: Downloaded {} from local store ({} bytes)", cid_str, block.size());
+            Ok(block.data)
+        }
+        Err(StorageError::BlockNotFound(_)) => {
+            // Block not found locally - try fetching from known peers via HTTP
+            // This is a temporary solution - in production would use BlockExc/BoTG
+            info!("Archivist API: Block {} not found locally, fetching from peers", cid_str);
 
-    info!("Archivist API: Downloaded {} ({} bytes)", cid_str, block.size());
+            // Try all known peers in Docker network (Archivist-style peer discovery)
+            // Generate peer list: bootstrap + node1..node49 (for 50 node cluster)
+            let mut peer_hostnames = vec!["bootstrap".to_string()];
+            for i in 1..50 {
+                peer_hostnames.push(format!("node{}", i));
+            }
 
-    // Return raw bytes (Archivist format)
-    Ok(block.data)
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .map_err(|e| ApiError::Internal(format!("Failed to create HTTP client: {}", e)))?;
+
+            // Shuffle peers for load distribution (Archivist-style)
+            {
+                let mut rng = rand::thread_rng();
+                peer_hostnames.shuffle(&mut rng);
+            }
+
+            for hostname in peer_hostnames.iter().take(10) {  // Try up to 10 random peers
+                let url = format!("http://{}:8080/api/archivist/v1/data/{}/network/stream", hostname, cid_str);
+
+                info!("Archivist API: Trying to fetch {} from {}", cid_str, hostname);
+
+                match client.get(&url).send().await {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            match resp.bytes().await {
+                                Ok(data) => {
+                                    info!("Archivist API: Fetched {} from {} ({} bytes)", cid_str, hostname, data.len());
+
+                                    // Store locally
+                                    let block = Block::new(data.to_vec())
+                                        .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
+
+                                    state.block_store.put(block.clone()).await
+                                        .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+
+                                    return Ok(block.data);
+                                }
+                                Err(e) => {
+                                    info!("Archivist API: Failed to read response from {}: {}", hostname, e);
+                                }
+                            }
+                        } else {
+                            info!("Archivist API: Got HTTP {} from {}", resp.status(), hostname);
+                        }
+                    }
+                    Err(e) => {
+                        info!("Archivist API: Failed to fetch from {}: {}", hostname, e);
+                    }
+                }
+            }
+
+            info!("Archivist API: Block {} not available from any peer", cid_str);
+            Err(ApiError::NotFound(cid_str.clone()))
+        }
+        Err(e) => Err(ApiError::Internal(format!("Failed to retrieve block: {}", e))),
+    }
+}
+
+/// Peer ID endpoint (GET /api/archivist/v1/peer-id)
+async fn peer_id_endpoint(State(state): State<ApiState>) -> impl IntoResponse {
+    Json(state.peer_id)
+}
+
+/// Stats endpoint (GET /api/archivist/v1/stats)
+async fn archivist_stats(State(state): State<ApiState>) -> impl IntoResponse {
+    let stats = state.block_store.stats().await;
+
+    Json(serde_json::json!({
+        "block_count": stats.block_count,
+        "total_size": stats.total_size,
+    }))
 }
 
 /// API error type
@@ -269,8 +334,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check() {
+        use crate::botg::BoTgConfig;
+
         let block_store = Arc::new(BlockStore::new());
-        let app = create_router(block_store);
+        let metrics = Metrics::new();
+        let peer_id = "12D3KooWTest123".to_string();
+        let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
+        let app = create_router(block_store, metrics, peer_id, botg);
 
         let request = Request::builder()
             .uri("/health")
@@ -283,8 +353,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_and_get_block() {
+        use crate::botg::BoTgConfig;
+
         let block_store = Arc::new(BlockStore::new());
-        let app = create_router(block_store);
+        let metrics = Metrics::new();
+        let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
+        let app = create_router(block_store, metrics, "12D3KooWTest123".to_string(), botg);
 
         // Store a block
         let test_data = b"Hello, REST API!";
@@ -324,8 +398,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_nonexistent_block() {
+        use crate::botg::BoTgConfig;
+
         let block_store = Arc::new(BlockStore::new());
-        let app = create_router(block_store);
+        let metrics = Metrics::new();
+        let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
+        let app = create_router(block_store, metrics, "12D3KooWTest123".to_string(), botg);
 
         let request = Request::builder()
             .uri("/api/v1/blocks/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
