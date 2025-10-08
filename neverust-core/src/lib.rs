@@ -7,6 +7,7 @@ pub mod blockexc;
 pub mod botg;
 pub mod cid_blake3;
 pub mod config;
+pub mod identify_shim;
 pub mod identify_spr;
 pub mod messages;
 pub mod metrics;

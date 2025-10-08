@@ -315,7 +315,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                                         info!("Peer {} protocols: {:?}", peer_id, info.protocols);
                                     }
                                     Event::Sent { peer_id, .. } => {
-                                        info!("Sent identify info with SPR to {}", peer_id);
+                                        info!("Sent identify info to {}", peer_id);
                                     }
                                     Event::Pushed { peer_id, .. } => {
                                         info!("Pushed identify update to {}", peer_id);

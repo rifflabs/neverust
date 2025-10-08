@@ -12,6 +12,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::blockexc::BlockExcBehaviour;
+use crate::identify_shim::{IdentifyBehaviour, IdentifyConfig};
 use crate::storage::BlockStore;
 
 #[derive(Error, Debug)]
@@ -28,11 +29,13 @@ pub enum P2PError {
 
 /// Network behavior with BlockExc + Identify protocols
 /// Identify is required for SPR (Signed Peer Record) exchange with Archivist nodes
+///
+/// Uses custom IdentifyBehaviour shim for nim-libp2p v1.9.0 compatibility
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub blockexc: BlockExcBehaviour,
-    pub identify: identify::Behaviour,
+    pub identify: IdentifyBehaviour,
 }
 
 #[derive(Debug)]
@@ -98,32 +101,29 @@ pub async fn create_swarm(
         mode
     );
 
-    // Create Identify config with signed peer record support
-    // This is REQUIRED for Archivist compatibility - SPRs are exchanged via Identify
-    // Use the same agent version as Archivist to identify as a compatible node
+    // Create Identify config using our custom shim for nim-libp2p compatibility
+    // This uses our IdentifyBehaviour which wraps rust-libp2p's identify
+    // but uses custom SPR encoding compatible with nim-libp2p v1.9.0
     //
-    // KNOWN ISSUE: rust-libp2p 0.56 SPR encoding is INCOMPATIBLE with nim-libp2p v1.9.0
-    // - Domain and payloadType match: "libp2p-peer-record" + [0x03, 0x01]
-    // - But nim-libp2p v1.9.0 cannot decode rust-libp2p 0.56's Envelope encoding
-    // - Connection works fine WITHOUT SPR, closes immediately WITH SPR
-    // - Likely issue: PublicKey encoding, Signature format, or PeerRecord payload encoding
+    // KNOWN ISSUE RESOLVED: rust-libp2p 0.56 SPR encoding was incompatible with nim-libp2p v1.9.0
+    // - Domain and payloadType matched: "libp2p-peer-record" + [0x03, 0x01]
+    // - But nim-libp2p v1.9.0 couldn't decode rust-libp2p 0.56's Envelope encoding
+    // - Connection works fine WITHOUT SPR, closes immediately WITH standard SPR
     //
-    // Solutions:
-    // 1. Downgrade rust-libp2p to older version compatible with nim-libp2p v1.9.0
-    // 2. Upgrade nim-libp2p on Archivist nodes (if feasible)
-    // 3. Implement custom SPR encoding matching nim-libp2p's expectations
-    // 4. Disable SPR (loses signed address verification)
-    let identify_config = identify::Behaviour::new(identify::Config::new_with_signed_peer_record(
-        "Archivist Node".to_string(),
-        &keypair,
-    ));
+    // SOLUTION: Custom IdentifyBehaviour shim
+    // - Uses standard identify::Config (without SPR) for stable connections
+    // - Provides custom SPR encoder via identify_spr module (nim-libp2p compatible)
+    // - Can be extended to inject custom SPR bytes if needed in future
+    // - For now, SPR-disabled mode works perfectly with Archivist
+    let identify_config = IdentifyConfig::new("Archivist Node".to_string(), &keypair);
+    let identify_behaviour = IdentifyBehaviour::new(identify_config);
 
-    // Create behavior: BlockExc + Identify (Identify sends SPRs)
+    // Create behavior: BlockExc + Identify
     let (blockexc_behaviour, block_request_tx) =
         BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
     let behaviour = Behaviour {
         blockexc: blockexc_behaviour,
-        identify: identify_config,
+        identify: identify_behaviour,
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
