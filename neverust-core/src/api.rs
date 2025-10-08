@@ -8,6 +8,7 @@ use axum::{
     Json, Router,
 };
 use base64::Engine;
+use cid::{multibase::Base, Cid};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,6 +18,12 @@ use tracing::{error, info};
 use crate::botg::BoTgProtocol;
 use crate::metrics::Metrics;
 use crate::storage::{Block, BlockStore, StorageError};
+
+/// Convert CID to base58btc string (Archivist format with 'z' prefix)
+fn cid_to_string(cid: &Cid) -> String {
+    cid.to_string_of_base(Base::Base58Btc)
+        .unwrap_or_else(|_| cid.to_string())
+}
 
 /// API state shared across handlers
 #[derive(Clone)]
@@ -142,7 +149,7 @@ async fn store_block(
     info!("API: Stored block {} ({} bytes)", cid, size);
 
     Ok(Json(StoreBlockResponse {
-        cid: cid.to_string(),
+        cid: cid_to_string(&cid),
         size,
     }))
 }
@@ -285,8 +292,8 @@ async fn archivist_upload(
 
     info!("Archivist API: Uploaded {} ({} bytes)", cid, body.len());
 
-    // Return CID as plain text (Archivist format)
-    Ok(cid.to_string())
+    // Return CID as plain text (Archivist format with base58btc encoding)
+    Ok(cid_to_string(&cid))
 }
 
 /// Archivist-compatible download endpoint (GET /api/archivist/v1/data/:cid/network/stream)
@@ -322,9 +329,24 @@ async fn archivist_download(
 
             // Try all known peers in Docker network (Archivist-style peer discovery)
             // Generate peer list: bootstrap + node1..node49 (for 50 node cluster)
-            let mut peer_hostnames = vec!["bootstrap".to_string()];
+            let mut peer_urls = vec![];
+
+            // Add Docker network peers
+            peer_urls.push("http://bootstrap:8080".to_string());
             for i in 1..50 {
-                peer_hostnames.push(format!("node{}", i));
+                peer_urls.push(format!("http://node{}:8080", i));
+            }
+
+            // Add known external Archivist testnet peers (try multiple ports)
+            let external_peers = vec![
+                "91.98.135.54",
+                "10.7.1.200",  // blackberry
+            ];
+            for peer in external_peers {
+                // Try common Archivist API ports
+                for port in [8080, 8070, 8000, 3000] {
+                    peer_urls.push(format!("http://{}:{}", peer, port));
+                }
             }
 
             let client = reqwest::Client::builder()
@@ -335,19 +357,19 @@ async fn archivist_download(
             // Shuffle peers for load distribution (Archivist-style)
             {
                 let mut rng = rand::thread_rng();
-                peer_hostnames.shuffle(&mut rng);
+                peer_urls.shuffle(&mut rng);
             }
 
-            for hostname in peer_hostnames.iter().take(10) {
-                // Try up to 10 random peers
+            for base_url in peer_urls.iter().take(25) {
+                // Try up to 25 random peers
                 let url = format!(
-                    "http://{}:8080/api/archivist/v1/data/{}/network/stream",
-                    hostname, cid_str
+                    "{}/api/archivist/v1/data/{}/network/stream",
+                    base_url, cid_str
                 );
 
                 info!(
                     "Archivist API: Trying to fetch {} from {}",
-                    cid_str, hostname
+                    cid_str, base_url
                 );
 
                 match client.get(&url).send().await {
@@ -358,7 +380,7 @@ async fn archivist_download(
                                     info!(
                                         "Archivist API: Fetched {} from {} ({} bytes)",
                                         cid_str,
-                                        hostname,
+                                        base_url,
                                         data.len()
                                     );
 
@@ -376,7 +398,7 @@ async fn archivist_download(
                                 Err(e) => {
                                     info!(
                                         "Archivist API: Failed to read response from {}: {}",
-                                        hostname, e
+                                        base_url, e
                                     );
                                 }
                             }
@@ -384,12 +406,12 @@ async fn archivist_download(
                             info!(
                                 "Archivist API: Got HTTP {} from {}",
                                 resp.status(),
-                                hostname
+                                base_url
                             );
                         }
                     }
                     Err(e) => {
-                        info!("Archivist API: Failed to fetch from {}: {}", hostname, e);
+                        info!("Archivist API: Failed to fetch from {}: {}", base_url, e);
                     }
                 }
             }

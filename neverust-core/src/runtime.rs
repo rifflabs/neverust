@@ -5,6 +5,7 @@
 
 use crate::{
     api,
+    blockexc::BlockExcClient,
     botg::{BoTgConfig, BoTgProtocol},
     config::Config,
     metrics::Metrics,
@@ -38,7 +39,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     info!("Initialized peer capability registry");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
-    let mut swarm = create_swarm(
+    let (mut swarm, block_request_tx) = create_swarm(
         block_store.clone(),
         config.mode.clone(),
         config.price_per_byte,
@@ -46,6 +47,15 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     )
     .await?;
     let peer_id = swarm.local_peer_id().to_string();
+
+    // Initialize BlockExc client for requesting blocks from peers (via channel to swarm)
+    let blockexc_client = Arc::new(BlockExcClient::new(
+        block_store.clone(),
+        metrics.clone(),
+        3, // max_retries
+        block_request_tx,
+    ));
+    info!("Initialized BlockExc client with 3 max retries");
 
     // Initialize BoTG (Block-over-TGP) protocol for high-speed block exchange
     info!(
@@ -287,6 +297,11 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                                         warn!("Identify error with {}: {}", peer_id, error);
                                     }
                                 }
+                            }
+                            BehaviourEvent::BlockExc(blockexc_event) => {
+                                // BlockExc events are handled internally by the behaviour
+                                // (blocks are stored automatically when received)
+                                info!("BlockExc event: {:?}", blockexc_event);
                             }
                         }
                     }

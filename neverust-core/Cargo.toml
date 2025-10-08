@@ -23,6 +23,7 @@ prost = { version = "0.12", features = ["derive"] }
 reqwest = { version = "0.11", features = ["default", "json"] }
 rand = "0.8"
 blake3 = "1.5"
+sha2 = "0.10"
 multihash = "0.19"
 cid = "0.11"
 unsigned-varint = "0.8"

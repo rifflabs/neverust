@@ -34,6 +34,8 @@ pub struct BlockExcHandler {
     price_per_byte: u64,
     /// Metrics collector for tracking P2P traffic
     metrics: Metrics,
+    /// Pending block request (if any)
+    pending_request: Option<cid::Cid>,
 }
 
 impl BlockExcHandler {
@@ -53,25 +55,56 @@ impl BlockExcHandler {
             mode,
             price_per_byte,
             metrics,
+            pending_request: None,
         }
     }
 }
 
+/// Messages from BlockExcBehaviour to BlockExcHandler
+#[derive(Debug, Clone)]
+pub enum BlockExcFromBehaviour {
+    /// Request a block from this peer
+    RequestBlock { cid: cid::Cid },
+}
+
+/// Messages from BlockExcHandler to BlockExcBehaviour
+#[derive(Debug, Clone)]
+pub enum BlockExcToBehaviour {
+    /// Block delivered from peer
+    BlockReceived {
+        cid: cid::Cid,
+        data: Vec<u8>,
+    },
+    /// Peer indicated they have this block
+    BlockPresence {
+        cid: cid::Cid,
+        has_block: bool,
+    },
+}
+
 impl ConnectionHandler for BlockExcHandler {
-    type FromBehaviour = ();
-    type ToBehaviour = ();
+    type FromBehaviour = BlockExcFromBehaviour;
+    type ToBehaviour = BlockExcToBehaviour;
     #[allow(deprecated)]
     type Error = io::Error;
     type InboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type InboundOpenInfo = ();
-    type OutboundOpenInfo = ();
+    type OutboundOpenInfo = cid::Cid;
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
         SubstreamProtocol::new(ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)), ())
     }
 
-    fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {}
+    fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
+        match event {
+            BlockExcFromBehaviour::RequestBlock { cid } => {
+                info!("BlockExc: Received request to fetch block {} from {}", cid, self.peer_id);
+                self.pending_request = Some(cid);
+                self.outbound_requested = false; // Reset so poll() will create new stream
+            }
+        }
+    }
 
     fn connection_keep_alive(&self) -> KeepAlive {
         self.keep_alive
@@ -89,15 +122,19 @@ impl ConnectionHandler for BlockExcHandler {
             Self::Error,
         >,
     > {
-        // DISABLED: Automatic outbound streams cause DialUpgradeErrors with Archivist testnet nodes
-        // Testnet bootstrap nodes only accept inbound requests (server-side only)
-        // For peer-to-peer Neverust communication, we'll implement demand-driven outbound streams
-        // when we actually need to request blocks (not automatically on every connection)
-
-        // TODO: Implement on-demand outbound stream requests:
-        // - When we want to request specific blocks via WantList
-        // - Detect peer capabilities (Neverust vs flagship) via identify protocol
-        // - Only auto-dial for Neverust-to-Neverust communication
+        // On-demand outbound stream creation: when we have a pending block request
+        if let Some(cid) = self.pending_request.take() {
+            if !self.outbound_requested {
+                info!("BlockExc: Opening outbound stream to {} to request block {}", self.peer_id, cid);
+                self.outbound_requested = true;
+                return std::task::Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
+                    protocol: SubstreamProtocol::new(
+                        ReadyUpgrade::new(StreamProtocol::new(PROTOCOL_ID)),
+                        cid,
+                    ),
+                });
+            }
+        }
 
         std::task::Poll::Pending
     }
@@ -394,17 +431,16 @@ impl ConnectionHandler for BlockExcHandler {
             }
             ConnectionEvent::FullyNegotiatedOutbound(FullyNegotiatedOutbound {
                 protocol: stream,
-                ..
+                info: requested_cid,
             }) => {
                 self.has_active_stream = true;
                 let peer_id = self.peer_id;
                 let block_store = self.block_store.clone();
                 let metrics = self.metrics.clone();
-                info!("BlockExc: Fully negotiated outbound stream to {}", peer_id);
+                info!("BlockExc: Fully negotiated outbound stream to {} for block {}", peer_id, requested_cid);
 
                 // Spawn task to handle outbound stream - send WantList and receive blocks
                 tokio::spawn(async move {
-                    use crate::cid_blake3::blake3_cid;
                     use crate::messages::{
                         decode_message, encode_message, Message, WantType, Wantlist, WantlistEntry,
                     };
@@ -413,19 +449,15 @@ impl ConnectionHandler for BlockExcHandler {
 
                     let mut stream = stream;
 
-                    // Create a test CID - let's hash "Hello, Archivist!" and request that block
-                    let test_data = b"Hello, Archivist!";
-                    let test_cid = blake3_cid(test_data).expect("Failed to create test CID");
-
                     info!(
-                        "BlockExc: Requesting test block {} from {}",
-                        test_cid, peer_id
+                        "BlockExc: Requesting block {} from {}",
+                        requested_cid, peer_id
                     );
 
-                    // Create WantList with test CID
+                    // Create WantList with requested CID
                     let wantlist = Wantlist {
                         entries: vec![WantlistEntry {
-                            block: test_cid.to_bytes(),
+                            block: requested_cid.to_bytes(),
                             priority: 1,
                             cancel: false,
                             want_type: WantType::WantBlock as i32,
@@ -487,9 +519,15 @@ impl ConnectionHandler for BlockExcHandler {
                                             info!("BlockExc: Received block! prefix_len={}, data_len={}",
                                                 msg_block.prefix.len(), msg_block.data.len());
 
-                                            // Compute CID from data and verify
+                                            // Compute CID from data and verify it matches what we requested
+                                            use crate::cid_blake3::blake3_cid;
                                             match blake3_cid(&msg_block.data) {
                                                 Ok(computed_cid) => {
+                                                    if computed_cid != requested_cid {
+                                                        warn!("BlockExc: CID mismatch! Expected {}, got {}", requested_cid, computed_cid);
+                                                        continue;
+                                                    }
+
                                                     // Create Block and store it
                                                     let block = Block {
                                                         cid: computed_cid,
@@ -559,12 +597,29 @@ impl ConnectionHandler for BlockExcHandler {
     }
 }
 
+use tokio::sync::mpsc;
+
+/// Request to fetch a block from peers
+#[derive(Debug, Clone)]
+pub struct BlockRequest {
+    pub cid: cid::Cid,
+    pub response_tx: Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<crate::storage::Block>>>>,
+}
+
 /// BlockExc network behaviour
 pub struct BlockExcBehaviour {
     block_store: Arc<BlockStore>,
     mode: String,
     price_per_byte: u64,
     metrics: Metrics,
+    /// Channel for receiving block requests
+    request_rx: mpsc::UnboundedReceiver<BlockRequest>,
+    /// Pending block requests
+    pending_requests: std::collections::HashMap<cid::Cid, BlockRequest>,
+    /// Connected peers
+    connected_peers: std::collections::HashSet<PeerId>,
+    /// Pending events to send to handlers
+    pending_events: std::collections::VecDeque<(PeerId, BlockExcFromBehaviour)>,
 }
 
 impl BlockExcBehaviour {
@@ -573,19 +628,124 @@ impl BlockExcBehaviour {
         mode: String,
         price_per_byte: u64,
         metrics: Metrics,
-    ) -> Self {
-        Self {
+    ) -> (Self, mpsc::UnboundedSender<BlockRequest>) {
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let behaviour = Self {
             block_store,
             mode,
             price_per_byte,
             metrics,
+            request_rx,
+            pending_requests: std::collections::HashMap::new(),
+            connected_peers: std::collections::HashSet::new(),
+            pending_events: std::collections::VecDeque::new(),
+        };
+        (behaviour, request_tx)
+    }
+}
+
+//
+// BlockExc Client Implementation
+//
+
+use cid::Cid;
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlockExcError {
+    #[error("Block request failed: {0}")]
+    RequestFailed(String),
+
+    #[error("Block not found after retries")]
+    NotFound,
+
+    #[error("Timeout waiting for block")]
+    Timeout,
+
+    #[error("No peers available")]
+    NoPeers,
+
+    #[error("CID mismatch: expected {expected}, got {got}")]
+    CidMismatch { expected: String, got: String },
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Storage error: {0}")]
+    Storage(#[from] crate::storage::StorageError),
+}
+
+/// BlockExc client for requesting blocks from peers
+pub struct BlockExcClient {
+    /// Channel to send block requests to the swarm
+    request_tx: mpsc::UnboundedSender<BlockRequest>,
+    /// Local block store
+    block_store: Arc<BlockStore>,
+    /// Metrics
+    metrics: Metrics,
+}
+
+impl BlockExcClient {
+    pub fn new(
+        block_store: Arc<BlockStore>,
+        metrics: Metrics,
+        _max_retries: u32,
+        request_tx: mpsc::UnboundedSender<BlockRequest>,
+    ) -> Self {
+        Self {
+            request_tx,
+            block_store,
+            metrics,
+        }
+    }
+
+    /// Request a block from the network via BlockExc protocol
+    ///
+    /// Sends a request to the swarm which broadcasts WantBlock messages to all connected peers
+    pub async fn request_block(&self, cid: Cid) -> Result<crate::storage::Block, BlockExcError> {
+        info!("BlockExc client: Requesting block {}", cid);
+
+        // Check if block is already in local store
+        if let Ok(block) = self.block_store.get(&cid).await {
+            info!("BlockExc client: Block {} found in local store", cid);
+            return Ok(block);
+        }
+
+        // Create a oneshot channel to receive the block
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let response_tx = Arc::new(tokio::sync::Mutex::new(Some(response_tx)));
+
+        // Send block request to swarm via channel
+        let block_request = BlockRequest {
+            cid,
+            response_tx,
+        };
+
+        if let Err(_) = self.request_tx.send(block_request) {
+            return Err(BlockExcError::RequestFailed(
+                "Failed to send request to swarm".to_string(),
+            ));
+        }
+
+        info!("BlockExc client: Sent request for block {} to swarm", cid);
+
+        // Wait for block to arrive (with timeout)
+        match tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await {
+            Ok(Ok(block)) => {
+                info!("BlockExc client: Successfully received block {}", cid);
+                self.metrics.block_received(block.data.len());
+                Ok(block)
+            }
+            Ok(Err(_)) => Err(BlockExcError::RequestFailed(
+                "Channel closed".to_string(),
+            )),
+            Err(_) => Err(BlockExcError::Timeout),
         }
     }
 }
 
 impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
     type ConnectionHandler = BlockExcHandler;
-    type ToSwarm = ();
+    type ToSwarm = BlockExcToBehaviour;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -619,22 +779,107 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         ))
     }
 
-    fn on_swarm_event(&mut self, _event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {}
+    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {
+        match event {
+            libp2p::swarm::FromSwarm::ConnectionEstablished(conn) => {
+                info!("BlockExc: Connection established with {}", conn.peer_id);
+                self.connected_peers.insert(conn.peer_id);
+            }
+            libp2p::swarm::FromSwarm::ConnectionClosed(conn) => {
+                if conn.remaining_established == 0 {
+                    info!("BlockExc: All connections closed with {}", conn.peer_id);
+                    self.connected_peers.remove(&conn.peer_id);
+                }
+            }
+            _ => {}
+        }
+    }
 
     fn on_connection_handler_event(
         &mut self,
-        _peer_id: PeerId,
+        peer_id: PeerId,
         _connection_id: libp2p::swarm::ConnectionId,
-        _event: libp2p::swarm::THandlerOutEvent<Self>,
+        event: libp2p::swarm::THandlerOutEvent<Self>,
     ) {
+        match event {
+            BlockExcToBehaviour::BlockReceived { cid, data } => {
+                info!("BlockExc behaviour: Received block {} from {} ({} bytes)", cid, peer_id, data.len());
+
+                // Store in block store
+                let block = crate::storage::Block { cid, data };
+                let block_store = self.block_store.clone();
+                let metrics = self.metrics.clone();
+
+                // Complete pending request if exists
+                if let Some(request) = self.pending_requests.remove(&cid) {
+                    let response_tx = request.response_tx.clone();
+                    let block_clone = block.clone();
+                    tokio::spawn(async move {
+                        let mut tx_guard = response_tx.lock().await;
+                        if let Some(tx) = tx_guard.take() {
+                            let _ = tx.send(block_clone);
+                        }
+                    });
+                }
+
+                tokio::spawn(async move {
+                    match block_store.put(block.clone()).await {
+                        Ok(_) => {
+                            metrics.block_received(block.data.len());
+                        }
+                        Err(e) => {
+                            warn!("Failed to store received block: {}", e);
+                        }
+                    }
+                });
+            }
+            BlockExcToBehaviour::BlockPresence { cid, has_block } => {
+                info!("BlockExc behaviour: Peer {} {} block {}", peer_id, if has_block { "has" } else { "doesn't have" }, cid);
+                // TODO: Track which peers have which blocks for smarter routing
+            }
+        }
     }
 
     fn poll(
         &mut self,
-        _cx: &mut std::task::Context<'_>,
+        cx: &mut std::task::Context<'_>,
         _params: &mut impl libp2p::swarm::PollParameters,
     ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
     {
+        // Process pending handler events first
+        if let Some((peer_id, event)) = self.pending_events.pop_front() {
+            return std::task::Poll::Ready(libp2p::swarm::ToSwarm::NotifyHandler {
+                peer_id,
+                handler: libp2p::swarm::NotifyHandler::Any,
+                event,
+            });
+        }
+
+        // Process incoming block requests
+        while let std::task::Poll::Ready(Some(request)) = self.request_rx.poll_recv(cx) {
+            info!("BlockExc behaviour: Received request for block {} from {} connected peers", request.cid, self.connected_peers.len());
+
+            // Store the pending request
+            self.pending_requests.insert(request.cid, request.clone());
+
+            // Queue RequestBlock events for all connected peers
+            for peer_id in &self.connected_peers {
+                self.pending_events.push_back((
+                    *peer_id,
+                    BlockExcFromBehaviour::RequestBlock { cid: request.cid },
+                ));
+            }
+
+            // Process first pending event immediately
+            if let Some((peer_id, event)) = self.pending_events.pop_front() {
+                return std::task::Poll::Ready(libp2p::swarm::ToSwarm::NotifyHandler {
+                    peer_id,
+                    handler: libp2p::swarm::NotifyHandler::Any,
+                    event,
+                });
+            }
+        }
+
         std::task::Poll::Pending
     }
 }

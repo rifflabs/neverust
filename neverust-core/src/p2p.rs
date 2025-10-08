@@ -50,11 +50,18 @@ pub struct Behaviour {
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Identify(identify::Event),
+    BlockExc(crate::blockexc::BlockExcToBehaviour),
 }
 
 impl From<identify::Event> for BehaviourEvent {
     fn from(event: identify::Event) -> Self {
         BehaviourEvent::Identify(event)
+    }
+}
+
+impl From<crate::blockexc::BlockExcToBehaviour> for BehaviourEvent {
+    fn from(event: crate::blockexc::BlockExcToBehaviour) -> Self {
+        BehaviourEvent::BlockExc(event)
     }
 }
 
@@ -64,20 +71,13 @@ impl From<void::Void> for BehaviourEvent {
     }
 }
 
-impl From<()> for BehaviourEvent {
-    fn from(_: ()) -> Self {
-        // BlockExc doesn't emit events, this should never be called
-        unreachable!("BlockExc behavior doesn't emit events")
-    }
-}
-
 /// Create a new P2P swarm with default configuration
 pub async fn create_swarm(
     block_store: Arc<BlockStore>,
     mode: String,
     price_per_byte: u64,
     metrics: crate::metrics::Metrics,
-) -> Result<Swarm<Behaviour>, P2PError> {
+) -> Result<(Swarm<Behaviour>, tokio::sync::mpsc::UnboundedSender<crate::blockexc::BlockRequest>), P2PError> {
     // Generate keypair for this node
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
@@ -91,8 +91,9 @@ pub async fn create_swarm(
     ));
 
     // Create behavior: BlockExc + Identify for testnet compatibility
+    let (blockexc_behaviour, block_request_tx) = BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
     let behaviour = Behaviour {
-        blockexc: BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics),
+        blockexc: blockexc_behaviour,
         identify: identify_config,
     };
 
@@ -114,7 +115,7 @@ pub async fn create_swarm(
         })
         .build();
 
-    Ok(swarm)
+    Ok((swarm, block_request_tx))
 }
 
 #[cfg(test)]
