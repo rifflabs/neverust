@@ -3,6 +3,8 @@
 //! Implements Archivist's custom BlockExc protocol for block exchange.
 //! Protocol ID: /archivist/blockexc/1.0.0
 
+use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
 use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::{
     handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
@@ -12,8 +14,6 @@ use libp2p::PeerId;
 use std::io;
 use std::sync::Arc;
 use tracing::{info, warn};
-use futures::AsyncReadExt;
-use futures::AsyncWriteExt;
 
 use crate::metrics::Metrics;
 use crate::storage::BlockStore;
@@ -169,11 +169,7 @@ impl ConnectionHandler for BlockExcHandler {
         &mut self,
         _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<
-        ConnectionHandlerEvent<
-            Self::OutboundProtocol,
-            Self::OutboundOpenInfo,
-            Self::ToBehaviour,
-        >,
+        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
     > {
         // On-demand outbound stream creation: when we have a pending block request
         if let Some(cid) = self.pending_request.take() {

@@ -101,6 +101,18 @@ pub async fn create_swarm(
     // Create Identify config with signed peer record support
     // This is REQUIRED for Archivist compatibility - SPRs are exchanged via Identify
     // Use the same agent version as Archivist to identify as a compatible node
+    //
+    // KNOWN ISSUE: rust-libp2p 0.56 SPR encoding is INCOMPATIBLE with nim-libp2p v1.9.0
+    // - Domain and payloadType match: "libp2p-peer-record" + [0x03, 0x01]
+    // - But nim-libp2p v1.9.0 cannot decode rust-libp2p 0.56's Envelope encoding
+    // - Connection works fine WITHOUT SPR, closes immediately WITH SPR
+    // - Likely issue: PublicKey encoding, Signature format, or PeerRecord payload encoding
+    //
+    // Solutions:
+    // 1. Downgrade rust-libp2p to older version compatible with nim-libp2p v1.9.0
+    // 2. Upgrade nim-libp2p on Archivist nodes (if feasible)
+    // 3. Implement custom SPR encoding matching nim-libp2p's expectations
+    // 4. Disable SPR (loses signed address verification)
     let identify_config = identify::Behaviour::new(
         identify::Config::new_with_signed_peer_record(
             "Archivist Node".to_string(),
