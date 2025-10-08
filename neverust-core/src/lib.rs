@@ -10,6 +10,7 @@ pub mod config;
 pub mod messages;
 pub mod metrics;
 pub mod p2p;
+pub mod pending_blocks;
 pub mod runtime;
 pub mod spr;
 pub mod storage;
