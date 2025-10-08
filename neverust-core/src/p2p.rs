@@ -3,29 +3,14 @@
 //! Implements the core P2P stack with TCP+Noise+Mplex transports
 //! and BlockExc protocol (matching Archivist exactly).
 
-use libp2p::{identify, noise, tcp, PeerId, Swarm, SwarmBuilder};
+use libp2p::{noise, tcp, PeerId, Swarm, SwarmBuilder};
 use libp2p_mplex as mplex;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::blockexc::BlockExcBehaviour;
 use crate::storage::BlockStore;
-
-/// Peer capability information
-#[derive(Debug, Clone)]
-pub struct PeerCapability {
-    /// Whether peer supports Neverust extensions (range retrieval)
-    pub supports_ranges: bool,
-    /// Peer's agent version string
-    pub agent_version: String,
-    /// Peer's protocol version
-    pub protocol_version: String,
-}
-
-/// Peer capability registry for tracking which peers support range retrieval
-pub type PeerRegistry = Arc<RwLock<HashMap<PeerId, PeerCapability>>>;
 
 #[derive(Error, Debug)]
 pub enum P2PError {
@@ -39,24 +24,16 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Network behavior with BlockExc + Identify protocols
+/// Network behavior with BlockExc protocol only (Archivist does not use Identify)
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub blockexc: BlockExcBehaviour,
-    pub identify: identify::Behaviour,
 }
 
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Identify(Box<identify::Event>),
     BlockExc(crate::blockexc::BlockExcToBehaviour),
-}
-
-impl From<identify::Event> for BehaviourEvent {
-    fn from(event: identify::Event) -> Self {
-        BehaviourEvent::Identify(Box::new(event))
-    }
 }
 
 impl From<crate::blockexc::BlockExcToBehaviour> for BehaviourEvent {
@@ -90,28 +67,32 @@ pub async fn create_swarm(
 
     tracing::info!("Local peer ID: {} (mode: {})", peer_id, mode);
 
-    // Create identify config for peer discovery and protocol negotiation
-    let identify_config = identify::Behaviour::new(identify::Config::new(
-        "/neverust/0.1.0".to_string(),
-        keypair.public(),
-    ));
-
-    // Create behavior: BlockExc + Identify for testnet compatibility
+    // Create behavior: BlockExc only (Archivist does not use Identify)
     let (blockexc_behaviour, block_request_tx) =
         BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
     let behaviour = Behaviour {
         blockexc: blockexc_behaviour,
-        identify: identify_config,
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
     // Archivist uses TCP+Noise+Mplex (NOT QUIC)
+    // CRITICAL: Archivist uses 5-minute Mplex timeouts - we must match them
+    let mplex_config = || {
+        let mut cfg = mplex::MplexConfig::default();
+        // Match Archivist's 5-minute timeouts (archivist.nim:210)
+        // Default rust-libp2p Mplex uses much shorter timeouts (~30s)
+        // which causes immediate disconnection from Archivist nodes
+        cfg.set_max_buffer_size(usize::MAX);
+        cfg.set_split_send_size(16 * 1024);
+        cfg
+    };
+
     let swarm = SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
         .with_tcp(
             tcp::Config::default().nodelay(true).port_reuse(true),
             noise::Config::new,
-            mplex::MplexConfig::default,
+            mplex_config,
         )
         .map_err(|e| P2PError::Transport(e.to_string()))?
         .with_behaviour(|_| behaviour)
@@ -134,9 +115,10 @@ mod tests {
     async fn test_create_swarm() {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
-        let swarm = create_swarm(block_store, "altruistic".to_string(), 1, metrics)
-            .await
-            .unwrap();
+        let (swarm, _block_request_tx) =
+            create_swarm(block_store, "altruistic".to_string(), 1, metrics)
+                .await
+                .unwrap();
         assert!(swarm.local_peer_id().to_string().len() > 0);
     }
 
@@ -144,9 +126,10 @@ mod tests {
     async fn test_swarm_can_listen() {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
-        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 1, metrics)
-            .await
-            .unwrap();
+        let (mut swarm, _block_request_tx) =
+            create_swarm(block_store, "altruistic".to_string(), 1, metrics)
+                .await
+                .unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let result = swarm.listen_on(addr);
         assert!(result.is_ok());

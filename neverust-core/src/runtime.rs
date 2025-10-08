@@ -9,14 +9,13 @@ use crate::{
     botg::{BoTgConfig, BoTgProtocol},
     config::Config,
     metrics::Metrics,
-    p2p::{create_swarm, P2PError, PeerCapability, PeerRegistry},
+    p2p::{create_swarm, P2PError},
     storage::BlockStore,
     traffic,
 };
 use futures::StreamExt;
 use libp2p::{swarm::SwarmEvent, Multiaddr};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
 
@@ -33,10 +32,6 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Create metrics collector
     let metrics = Metrics::new();
     info!("Initialized metrics collector");
-
-    // Create peer capability registry for tracking Neverust vs Archivist-Node peers
-    let peer_registry: PeerRegistry = Arc::new(RwLock::new(HashMap::new()));
-    info!("Initialized peer capability registry");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
     let (mut swarm, block_request_tx) = create_swarm(
@@ -255,53 +250,32 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                     SwarmEvent::Behaviour(event) => {
                         use crate::p2p::BehaviourEvent;
                         match event {
-                            BehaviourEvent::Identify(identify_event) => {
-                                use libp2p::identify::Event;
-                                match *identify_event {
-                                    Event::Received { peer_id, info } => {
+                            BehaviourEvent::BlockExc(blockexc_event) => {
+                                use crate::blockexc::BlockExcToBehaviour;
+
+                                match blockexc_event {
+                                    BlockExcToBehaviour::BlockReceived { cid, data } => {
                                         info!(
-                                            "Identified peer {}: protocol_version={}, agent_version={}",
-                                            peer_id, info.protocol_version, info.agent_version
+                                            "Block received via BlockExc: {} ({} bytes)",
+                                            cid,
+                                            data.len()
                                         );
 
-                                        // Detect if peer is Neverust (supports range retrieval)
-                                        let supports_ranges = info.agent_version.contains("/neverust/");
-                                        if supports_ranges {
-                                            info!("Peer {} is Neverust-capable (supports range retrieval)", peer_id);
-                                        } else {
-                                            info!("Peer {} is Archivist-Node (requires full blocks)", peer_id);
-                                        }
-
-                                        // Store peer capability in registry
-                                        let capability = PeerCapability {
-                                            supports_ranges,
-                                            agent_version: info.agent_version.clone(),
-                                            protocol_version: info.protocol_version.clone(),
-                                        };
-
-                                        if let Ok(mut registry) = peer_registry.write() {
-                                            registry.insert(peer_id, capability);
-                                            info!("Stored capability for peer {} ({} peers tracked)", peer_id, registry.len());
-                                        }
-
-                                        // Log supported protocols
-                                        info!("Peer {} protocols: {:?}", peer_id, info.protocols);
+                                        // Block is automatically stored by BlockExcBehaviour
+                                        // Pending request is automatically completed by BlockExcBehaviour
+                                        // Just track metrics here
+                                        metrics.block_received(data.len());
                                     }
-                                    Event::Sent { peer_id } => {
-                                        info!("Sent identify info to {}", peer_id);
-                                    }
-                                    Event::Pushed { peer_id } => {
-                                        info!("Pushed identify update to {}", peer_id);
-                                    }
-                                    Event::Error { peer_id, error } => {
-                                        warn!("Identify error with {}: {}", peer_id, error);
+                                    BlockExcToBehaviour::BlockPresence { cid, has_block } => {
+                                        info!(
+                                            "Block presence notification: {} - {}",
+                                            cid,
+                                            if has_block { "available" } else { "not available" }
+                                        );
+                                        // Future enhancement: track which peers have which blocks
+                                        // for smarter routing and retry logic
                                     }
                                 }
-                            }
-                            BehaviourEvent::BlockExc(blockexc_event) => {
-                                // BlockExc events are handled internally by the behaviour
-                                // (blocks are stored automatically when received)
-                                info!("BlockExc event: {:?}", blockexc_event);
                             }
                         }
                     }
