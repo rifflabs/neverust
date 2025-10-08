@@ -92,13 +92,18 @@ pub async fn create_swarm(
     let keypair = libp2p::identity::Keypair::generate_secp256k1();
     let peer_id = PeerId::from(keypair.public());
 
-    tracing::info!("Local peer ID: {} (mode: {}, key: secp256k1)", peer_id, mode);
+    tracing::info!(
+        "Local peer ID: {} (mode: {}, key: secp256k1)",
+        peer_id,
+        mode
+    );
 
     // Create Identify config with signed peer record support
     // This is REQUIRED for Archivist compatibility - SPRs are exchanged via Identify
+    // Use the same agent version as Archivist to identify as a compatible node
     let identify_config = identify::Behaviour::new(
         identify::Config::new_with_signed_peer_record(
-            "/neverust/0.1.0".to_string(),
+            "Archivist Node".to_string(),
             &keypair,
         )
     );
