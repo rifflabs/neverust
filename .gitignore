@@ -29,3 +29,7 @@ node_modules/
 playwright-report/
 test-results/
 .playwright/
+
+# RocksDB data files (persistent storage - runtime data directories)
+data/blocks/
+crates/data/
