@@ -302,6 +302,29 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                                     }
                                 }
                             }
+                            BehaviourEvent::Identify(identify_event) => {
+                                use libp2p::identify::Event;
+                                match *identify_event {
+                                    Event::Received { peer_id, info, .. } => {
+                                        info!(
+                                            "Identified peer {}: protocol_version={}, agent_version={}",
+                                            peer_id, info.protocol_version, info.agent_version
+                                        );
+
+                                        // Log supported protocols
+                                        info!("Peer {} protocols: {:?}", peer_id, info.protocols);
+                                    }
+                                    Event::Sent { peer_id, .. } => {
+                                        info!("Sent identify info with SPR to {}", peer_id);
+                                    }
+                                    Event::Pushed { peer_id, .. } => {
+                                        info!("Pushed identify update to {}", peer_id);
+                                    }
+                                    Event::Error { peer_id, error, .. } => {
+                                        warn!("Identify error with {}: {}", peer_id, error);
+                                    }
+                                }
+                            }
                         }
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {

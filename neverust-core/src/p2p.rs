@@ -2,8 +2,10 @@
 //!
 //! Implements the core P2P stack with TCP+Noise+Mplex transports
 //! and BlockExc protocol (matching Archivist exactly).
+//!
+//! Identify protocol is used for SPR (Signed Peer Record) exchange.
 
-use libp2p::{noise, tcp, PeerId, Swarm, SwarmBuilder};
+use libp2p::{identify, noise, tcp, PeerId, Swarm, SwarmBuilder};
 use libp2p_mplex as mplex;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,21 +26,30 @@ pub enum P2PError {
     Io(#[from] std::io::Error),
 }
 
-/// Network behavior with BlockExc protocol only (Archivist does not use Identify)
+/// Network behavior with BlockExc + Identify protocols
+/// Identify is required for SPR (Signed Peer Record) exchange with Archivist nodes
 #[derive(libp2p::swarm::NetworkBehaviour)]
 #[behaviour(to_swarm = "BehaviourEvent")]
 pub struct Behaviour {
     pub blockexc: BlockExcBehaviour,
+    pub identify: identify::Behaviour,
 }
 
 #[derive(Debug)]
 pub enum BehaviourEvent {
     BlockExc(crate::blockexc::BlockExcToBehaviour),
+    Identify(Box<identify::Event>),
 }
 
 impl From<crate::blockexc::BlockExcToBehaviour> for BehaviourEvent {
     fn from(event: crate::blockexc::BlockExcToBehaviour) -> Self {
         BehaviourEvent::BlockExc(event)
+    }
+}
+
+impl From<identify::Event> for BehaviourEvent {
+    fn from(event: identify::Event) -> Self {
+        BehaviourEvent::Identify(Box::new(event))
     }
 }
 
@@ -65,23 +76,46 @@ pub async fn create_swarm(
     P2PError,
 > {
     // Generate keypair for this node
-    let keypair = libp2p::identity::Keypair::generate_ed25519();
+    // CRITICAL: Must use secp256k1 for Archivist compatibility!
+    //
+    // Archivist nodes are compiled with ONLY secp256k1 support:
+    //   config.nims: switch("define", "libp2p_pki_schemes=secp256k1")
+    //
+    // This disables Ed25519, RSA, and ECDSA at compile time in nim-libp2p.
+    // If we use Ed25519 keys, the Noise handshake fails with:
+    //   "Failed to decode remote public key. (initiator: false)"
+    //
+    // This is because nim-libp2p rejects key types not in SupportedSchemesInt,
+    // and only secp256k1 (scheme=2) is enabled in Archivist builds.
+    //
+    // Solution: Use secp256k1 keys to match Archivist's configuration.
+    let keypair = libp2p::identity::Keypair::generate_secp256k1();
     let peer_id = PeerId::from(keypair.public());
 
-    tracing::info!("Local peer ID: {} (mode: {})", peer_id, mode);
+    tracing::info!("Local peer ID: {} (mode: {}, key: secp256k1)", peer_id, mode);
 
-    // Create behavior: BlockExc only (Archivist does not use Identify)
+    // Create Identify config with signed peer record support
+    // This is REQUIRED for Archivist compatibility - SPRs are exchanged via Identify
+    let identify_config = identify::Behaviour::new(
+        identify::Config::new_with_signed_peer_record(
+            "/neverust/0.1.0".to_string(),
+            &keypair,
+        )
+    );
+
+    // Create behavior: BlockExc + Identify (Identify sends SPRs)
     let (blockexc_behaviour, block_request_tx) =
         BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
     let behaviour = Behaviour {
         blockexc: blockexc_behaviour,
+        identify: identify_config,
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
     // Archivist uses TCP+Noise+Mplex (NOT QUIC)
     // CRITICAL: Archivist uses 5-minute Mplex timeouts - we must match them
     let mplex_config = || {
-        let mut cfg = mplex::MplexConfig::default();
+        let mut cfg = mplex::Config::default();
         // Match Archivist's 5-minute timeouts (archivist.nim:210)
         // Default rust-libp2p Mplex uses much shorter timeouts (~30s)
         // which causes immediate disconnection from Archivist nodes
@@ -93,7 +127,7 @@ pub async fn create_swarm(
     let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
         .with_tokio()
         .with_tcp(
-            tcp::Config::default().nodelay(true).port_reuse(true),
+            tcp::Config::default().nodelay(true),
             noise::Config::new,
             mplex_config,
         )

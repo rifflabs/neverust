@@ -6,22 +6,82 @@
 use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::{
     handler::{ConnectionEvent, FullyNegotiatedInbound, FullyNegotiatedOutbound},
-    ConnectionHandler, ConnectionHandlerEvent, KeepAlive, StreamProtocol, SubstreamProtocol,
+    ConnectionHandler, ConnectionHandlerEvent, StreamProtocol, SubstreamProtocol,
 };
 use libp2p::PeerId;
 use std::io;
 use std::sync::Arc;
 use tracing::{info, warn};
+use futures::AsyncReadExt;
+use futures::AsyncWriteExt;
 
 use crate::metrics::Metrics;
 use crate::storage::BlockStore;
 
 pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
 
+/// Read a length-prefixed message from a stream
+async fn read_length_prefixed<R: AsyncReadExt + Unpin>(
+    reader: &mut R,
+    max_size: usize,
+) -> io::Result<Vec<u8>> {
+    // Read the length prefix (unsigned varint)
+    let mut length = 0u64;
+    let mut shift = 0;
+    loop {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf).await?;
+        let byte = buf[0];
+
+        length |= ((byte & 0x7F) as u64) << shift;
+        shift += 7;
+
+        if byte & 0x80 == 0 {
+            break;
+        }
+
+        if shift >= 64 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "varint too long",
+            ));
+        }
+    }
+
+    if length > max_size as u64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("message too large: {} > {}", length, max_size),
+        ));
+    }
+
+    let mut data = vec![0u8; length as usize];
+    reader.read_exact(&mut data).await?;
+    Ok(data)
+}
+
+/// Write a length-prefixed message to a stream
+async fn write_length_prefixed<W: AsyncWriteExt + Unpin>(
+    writer: &mut W,
+    data: &[u8],
+) -> io::Result<()> {
+    // Write length as unsigned varint
+    let mut length = data.len() as u64;
+    while length >= 0x80 {
+        writer.write_all(&[(length as u8) | 0x80]).await?;
+        length >>= 7;
+    }
+    writer.write_all(&[length as u8]).await?;
+
+    // Write data
+    writer.write_all(data).await?;
+    writer.flush().await?;
+    Ok(())
+}
+
 /// BlockExc connection handler
 pub struct BlockExcHandler {
     peer_id: PeerId,
-    keep_alive: KeepAlive,
     /// Whether we've requested an outbound stream
     outbound_requested: bool,
     /// Whether we have an active stream (inbound or outbound)
@@ -48,7 +108,6 @@ impl BlockExcHandler {
     ) -> Self {
         BlockExcHandler {
             peer_id,
-            keep_alive: KeepAlive::Yes,
             outbound_requested: false,
             has_active_stream: false,
             block_store,
@@ -79,8 +138,6 @@ pub enum BlockExcToBehaviour {
 impl ConnectionHandler for BlockExcHandler {
     type FromBehaviour = BlockExcFromBehaviour;
     type ToBehaviour = BlockExcToBehaviour;
-    #[allow(deprecated)]
-    type Error = io::Error;
     type InboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type InboundOpenInfo = ();
@@ -103,11 +160,11 @@ impl ConnectionHandler for BlockExcHandler {
         }
     }
 
-    fn connection_keep_alive(&self) -> KeepAlive {
-        self.keep_alive
+    fn connection_keep_alive(&self) -> bool {
+        // Keep connection alive if we have active streams or pending requests
+        self.has_active_stream || self.pending_request.is_some()
     }
 
-    #[allow(deprecated)]
     fn poll(
         &mut self,
         _cx: &mut std::task::Context<'_>,
@@ -116,7 +173,6 @@ impl ConnectionHandler for BlockExcHandler {
             Self::OutboundProtocol,
             Self::OutboundOpenInfo,
             Self::ToBehaviour,
-            Self::Error,
         >,
     > {
         // On-demand outbound stream creation: when we have a pending block request
@@ -165,7 +221,6 @@ impl ConnectionHandler for BlockExcHandler {
                 tokio::spawn(async move {
                     use crate::messages::{decode_message, encode_message, BlockDelivery, Message};
                     use cid::Cid;
-                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
 
                     let mut stream = stream;
                     info!("BlockExc: Started reading from {}", peer_id);
@@ -405,7 +460,6 @@ impl ConnectionHandler for BlockExcHandler {
                         decode_message, encode_message, Message, WantType, Wantlist, WantlistEntry,
                     };
                     use crate::storage::Block;
-                    use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
 
                     let mut stream = stream;
 
@@ -551,6 +605,7 @@ impl ConnectionHandler for BlockExcHandler {
             | ConnectionEvent::ListenUpgradeError(_)
             | ConnectionEvent::LocalProtocolsChange(_)
             | ConnectionEvent::RemoteProtocolsChange(_) => {}
+            _ => {}
         }
     }
 }
@@ -793,6 +848,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         peer: PeerId,
         _addr: &libp2p::Multiaddr,
         _role_override: libp2p::core::Endpoint,
+        _port_use: libp2p::core::transport::PortUse,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         Ok(BlockExcHandler::new(
             peer,
@@ -803,7 +859,7 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         ))
     }
 
-    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<Self::ConnectionHandler>) {
+    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm) {
         match event {
             libp2p::swarm::FromSwarm::ConnectionEstablished(conn) => {
                 info!("BlockExc: Connection established with {}", conn.peer_id);
@@ -877,7 +933,6 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
     fn poll(
         &mut self,
         cx: &mut std::task::Context<'_>,
-        _params: &mut impl libp2p::swarm::PollParameters,
     ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
     {
         // Process pending handler events first
