@@ -22,7 +22,7 @@
 //! - Archivist testnet SPR endpoint: https://spr.archivist.storage/testnet
 //! - libp2p SignedEnvelope: https://github.com/libp2p/specs/blob/master/RFC/0003-routing-records.md
 
-use libp2p::{Multiaddr, PeerId};
+use libp2p::{identity::Keypair, Multiaddr, PeerId};
 use prost::Message;
 use thiserror::Error;
 
@@ -39,6 +39,12 @@ pub enum SprError {
 
     #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),
+
+    #[error("Signature error: {0}")]
+    Signature(String),
+
+    #[error("Encoding error: {0}")]
+    Encoding(String),
 }
 
 /// Archivist's SPR format (actual structure from testnet)
@@ -135,6 +141,92 @@ fn parse_single_spr(spr_base64: &str) -> Result<(PeerId, Vec<Multiaddr>), SprErr
     }
 
     Ok((peer_id, addrs))
+}
+
+/// Generate an SPR (Signed Peer Record) for this node
+///
+/// Creates an Archivist-compatible SPR that can be shared with other nodes
+/// for bootstrapping and peer discovery.
+pub fn generate_spr(keypair: &Keypair, addrs: &[Multiaddr], seq: u64) -> Result<String, SprError> {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    // Get public key bytes (protobuf-encoded)
+    let public_key = keypair.public();
+    let peer_id_bytes = public_key.encode_protobuf();
+
+    // Convert sequence number to 2-byte big-endian
+    let seq_bytes = (seq as u16).to_be_bytes().to_vec();
+
+    // Create PeerInfo with addresses
+    let mut peer_info = PeerInfo {
+        peer_id: Some(peer_id_bytes.clone()),
+        seq,
+        addrs: Vec::new(),
+    };
+
+    // Wrap each address in AddrWrapper protobuf
+    #[derive(Clone, PartialEq, Message)]
+    struct AddrWrapper {
+        #[prost(bytes = "vec", optional, tag = "1")]
+        addr: Option<Vec<u8>>,
+    }
+
+    for addr in addrs {
+        let addr_bytes = addr.to_vec();
+        let wrapper = AddrWrapper {
+            addr: Some(addr_bytes),
+        };
+        let mut wrapper_bytes = Vec::new();
+        wrapper
+            .encode(&mut wrapper_bytes)
+            .map_err(|e| SprError::Encoding(format!("Failed to encode addr wrapper: {}", e)))?;
+        peer_info.addrs.push(wrapper_bytes);
+    }
+
+    // Encode PeerInfo
+    let mut peer_info_bytes = Vec::new();
+    peer_info
+        .encode(&mut peer_info_bytes)
+        .map_err(|e| SprError::Encoding(format!("Failed to encode peer info: {}", e)))?;
+
+    // Create ArchivistSpr (without signature first)
+    let spr_unsigned = ArchivistSpr {
+        peer_id: Some(peer_id_bytes),
+        seq_bytes: Some(seq_bytes),
+        peer_record: vec![peer_info_bytes.clone()],
+        signature: Vec::new(), // Will be filled after signing
+    };
+
+    // Encode unsigned SPR
+    let mut unsigned_bytes = Vec::new();
+    spr_unsigned
+        .encode(&mut unsigned_bytes)
+        .map_err(|e| SprError::Encoding(format!("Failed to encode SPR: {}", e)))?;
+
+    // Sign the peer_record payload
+    let signature = keypair
+        .sign(&peer_info_bytes)
+        .map_err(|e| SprError::Signature(format!("Failed to sign: {}", e)))?;
+
+    // Create final SPR with signature
+    let spr_signed = ArchivistSpr {
+        peer_id: spr_unsigned.peer_id,
+        seq_bytes: spr_unsigned.seq_bytes,
+        peer_record: spr_unsigned.peer_record,
+        signature: vec![signature],
+    };
+
+    // Encode final SPR
+    let mut final_bytes = Vec::new();
+    spr_signed
+        .encode(&mut final_bytes)
+        .map_err(|e| SprError::Encoding(format!("Failed to encode signed SPR: {}", e)))?;
+
+    // Encode as base64 URL-safe
+    let spr_base64 = URL_SAFE_NO_PAD.encode(&final_bytes);
+
+    // Return in spr: format
+    Ok(format!("spr:{}", spr_base64))
 }
 
 #[cfg(test)]

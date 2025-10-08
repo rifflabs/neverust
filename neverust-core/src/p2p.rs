@@ -49,6 +49,8 @@ impl From<void::Void> for BehaviourEvent {
 }
 
 /// Create a new P2P swarm with default configuration
+///
+/// Returns (swarm, block_request_tx, keypair)
 pub async fn create_swarm(
     block_store: Arc<BlockStore>,
     mode: String,
@@ -58,6 +60,7 @@ pub async fn create_swarm(
     (
         Swarm<Behaviour>,
         tokio::sync::mpsc::UnboundedSender<crate::blockexc::BlockRequest>,
+        libp2p::identity::Keypair,
     ),
     P2PError,
 > {
@@ -87,7 +90,7 @@ pub async fn create_swarm(
         cfg
     };
 
-    let swarm = SwarmBuilder::with_existing_identity(keypair)
+    let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default().nodelay(true).port_reuse(true),
@@ -103,7 +106,7 @@ pub async fn create_swarm(
         })
         .build();
 
-    Ok((swarm, block_request_tx))
+    Ok((swarm, block_request_tx, keypair))
 }
 
 #[cfg(test)]
@@ -115,7 +118,7 @@ mod tests {
     async fn test_create_swarm() {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
-        let (swarm, _block_request_tx) =
+        let (swarm, _block_request_tx, _keypair) =
             create_swarm(block_store, "altruistic".to_string(), 1, metrics)
                 .await
                 .unwrap();
@@ -126,7 +129,7 @@ mod tests {
     async fn test_swarm_can_listen() {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
-        let (mut swarm, _block_request_tx) =
+        let (mut swarm, _block_request_tx, _keypair) =
             create_swarm(block_store, "altruistic".to_string(), 1, metrics)
                 .await
                 .unwrap();

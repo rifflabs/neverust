@@ -18,10 +18,10 @@ async fn test_peer_dial_latency() {
     let metrics1 = Metrics::new();
     let metrics2 = Metrics::new();
 
-    let (mut swarm1, _tx1) = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
+    let (mut swarm1, _tx1, _keypair1) = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
         .await
         .expect("Failed to create swarm1");
-    let (mut swarm2, _tx2) = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
+    let (mut swarm2, _tx2, _keypair2) = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
         .await
         .expect("Failed to create swarm2");
 
@@ -86,12 +86,14 @@ async fn test_content_fetch_latency() {
     let metrics1 = Metrics::new();
     let metrics2 = Metrics::new();
 
-    let (mut swarm1, _tx1) = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1)
-        .await
-        .expect("Failed to create swarm1");
-    let (mut swarm2, _tx2) = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2)
-        .await
-        .expect("Failed to create swarm2");
+    let (mut swarm1, _tx1, _keypair1) =
+        create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1)
+            .await
+            .expect("Failed to create swarm1");
+    let (mut swarm2, _tx2, _keypair2) =
+        create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2)
+            .await
+            .expect("Failed to create swarm2");
 
     // Store a test block on node1
     let test_data = vec![42u8; 1024 * 1024]; // 1 MB block
@@ -162,12 +164,14 @@ async fn test_peer_dial_p95() {
         let metrics1 = Metrics::new();
         let metrics2 = Metrics::new();
 
-        let (mut swarm1, _tx1) = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
-            .await
-            .expect("Failed to create swarm1");
-        let (mut swarm2, _tx2) = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
-            .await
-            .expect("Failed to create swarm2");
+        let (mut swarm1, _tx1, _keypair1) =
+            create_swarm(store1, "altruistic".to_string(), 0, metrics1)
+                .await
+                .expect("Failed to create swarm1");
+        let (mut swarm2, _tx2, _keypair2) =
+            create_swarm(store2, "altruistic".to_string(), 0, metrics2)
+                .await
+                .expect("Failed to create swarm2");
 
         swarm1
             .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())

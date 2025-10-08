@@ -34,7 +34,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     info!("Initialized metrics collector");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
-    let (mut swarm, block_request_tx) = create_swarm(
+    let (mut swarm, block_request_tx, keypair) = create_swarm(
         block_store.clone(),
         config.mode.clone(),
         config.price_per_byte,
@@ -118,14 +118,26 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         }
     });
 
+    // Prepare listen addresses collection (will be populated as we receive NewListenAddr events)
+    let listen_addrs = Arc::new(std::sync::RwLock::new(Vec::new()));
+
     // Start REST API server in background with peer ID and BoTG
     let api_block_store = block_store.clone();
     let api_metrics = metrics.clone();
     let api_peer_id = peer_id.clone();
     let api_botg = botg.clone();
+    let api_keypair = Arc::new(keypair);
+    let api_listen_addrs = listen_addrs.clone();
     let api_port = config.api_port;
     tokio::spawn(async move {
-        let app = api::create_router(api_block_store, api_metrics, api_peer_id, api_botg);
+        let app = api::create_router(
+            api_block_store,
+            api_metrics,
+            api_peer_id,
+            api_botg,
+            api_keypair,
+            api_listen_addrs,
+        );
         let addr = format!("0.0.0.0:{}", api_port);
         info!("Starting REST API on {}", addr);
 
@@ -204,6 +216,9 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                         } else {
                             info!("Listening on {}", address);
                         }
+
+                        // Add to listen addresses collection
+                        listen_addrs.write().unwrap().push(address.clone());
 
                         // Once TCP is listening, dial bootstrap nodes
                         if tcp_listening && !bootstrapped {

@@ -18,6 +18,8 @@ use tracing::{error, info};
 use crate::botg::BoTgProtocol;
 use crate::metrics::Metrics;
 use crate::storage::{Block, BlockStore, StorageError};
+use libp2p::{identity::Keypair, Multiaddr};
+use std::sync::RwLock;
 
 /// Convert CID to base58btc string (Archivist format with 'z' prefix)
 fn cid_to_string(cid: &Cid) -> String {
@@ -32,6 +34,8 @@ pub struct ApiState {
     pub metrics: Metrics,
     pub peer_id: String,
     pub botg: Arc<BoTgProtocol>,
+    pub keypair: Arc<Keypair>,
+    pub listen_addrs: Arc<RwLock<Vec<Multiaddr>>>,
 }
 
 /// Response for storing a block
@@ -69,12 +73,16 @@ pub fn create_router(
     metrics: Metrics,
     peer_id: String,
     botg: Arc<BoTgProtocol>,
+    keypair: Arc<Keypair>,
+    listen_addrs: Arc<RwLock<Vec<Multiaddr>>>,
 ) -> Router {
     let state = ApiState {
         block_store,
         metrics,
         peer_id,
         botg,
+        keypair,
+        listen_addrs,
     };
 
     Router::new()
@@ -90,6 +98,7 @@ pub fn create_router(
         )
         .route("/api/archivist/v1/peer-id", get(peer_id_endpoint))
         .route("/api/archivist/v1/stats", get(archivist_stats))
+        .route("/api/archivist/v1/spr", get(spr_endpoint))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
@@ -443,6 +452,52 @@ async fn archivist_stats(State(state): State<ApiState>) -> impl IntoResponse {
     }))
 }
 
+/// SPR endpoint (GET /api/archivist/v1/spr)
+/// Returns the Signed Peer Record for this node
+async fn spr_endpoint(State(state): State<ApiState>) -> Result<String, ApiError> {
+    use crate::spr::generate_spr;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Use current timestamp as sequence number
+    let seq = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Read listen addresses from shared state
+    let addrs_snapshot = state.listen_addrs.read().unwrap().clone();
+
+    // Filter listen addresses to only include UDP addresses (Archivist format)
+    // Archivist SPRs contain UDP addresses for discovery
+    let udp_addrs: Vec<Multiaddr> = addrs_snapshot
+        .iter()
+        .filter_map(|addr| {
+            let addr_str = addr.to_string();
+            if addr_str.contains("/tcp/") {
+                // Convert TCP to UDP for SPR (Archivist convention)
+                let udp_str = addr_str.replace("/tcp/", "/udp/");
+                udp_str.parse().ok()
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if udp_addrs.is_empty() {
+        return Err(ApiError::Internal(
+            "No listen addresses available".to_string(),
+        ));
+    }
+
+    // Generate SPR
+    let spr = generate_spr(&state.keypair, &udp_addrs, seq)
+        .map_err(|e| ApiError::Internal(format!("Failed to generate SPR: {}", e)))?;
+
+    info!("Generated SPR for peer {}", state.peer_id);
+
+    Ok(spr)
+}
+
 /// API error type
 #[derive(Debug)]
 enum ApiError {
@@ -477,12 +532,17 @@ mod tests {
     #[tokio::test]
     async fn test_health_check() {
         use crate::botg::BoTgConfig;
+        use libp2p::identity::Keypair;
 
         let block_store = Arc::new(BlockStore::new());
         let metrics = Metrics::new();
         let peer_id = "12D3KooWTest123".to_string();
         let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
-        let app = create_router(block_store, metrics, peer_id, botg);
+        let keypair = Arc::new(Keypair::generate_ed25519());
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
+        let app = create_router(block_store, metrics, peer_id, botg, keypair, listen_addrs);
 
         let request = Request::builder()
             .uri("/health")
@@ -496,11 +556,23 @@ mod tests {
     #[tokio::test]
     async fn test_store_and_get_block() {
         use crate::botg::BoTgConfig;
+        use libp2p::identity::Keypair;
 
         let block_store = Arc::new(BlockStore::new());
         let metrics = Metrics::new();
         let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
-        let app = create_router(block_store, metrics, "12D3KooWTest123".to_string(), botg);
+        let keypair = Arc::new(Keypair::generate_ed25519());
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
+        let app = create_router(
+            block_store,
+            metrics,
+            "12D3KooWTest123".to_string(),
+            botg,
+            keypair,
+            listen_addrs,
+        );
 
         // Store a block
         let test_data = b"Hello, REST API!";
@@ -543,11 +615,23 @@ mod tests {
     #[tokio::test]
     async fn test_get_nonexistent_block() {
         use crate::botg::BoTgConfig;
+        use libp2p::identity::Keypair;
 
         let block_store = Arc::new(BlockStore::new());
         let metrics = Metrics::new();
         let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
-        let app = create_router(block_store, metrics, "12D3KooWTest123".to_string(), botg);
+        let keypair = Arc::new(Keypair::generate_ed25519());
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
+        let app = create_router(
+            block_store,
+            metrics,
+            "12D3KooWTest123".to_string(),
+            botg,
+            keypair,
+            listen_addrs,
+        );
 
         let request = Request::builder()
             .uri("/api/v1/blocks/bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")
