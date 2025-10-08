@@ -192,8 +192,8 @@ mod tests {
         // CID should be version 1
         assert_eq!(cid.version(), cid::Version::V1);
 
-        // Should use raw codec (0x55)
-        assert_eq!(cid.codec(), 0x55);
+        // Should use archivist-block codec (0xcd01)
+        assert_eq!(cid.codec(), 0xcd01);
 
         // Same data should produce same CID
         let cid2 = blake3_cid(data).unwrap();

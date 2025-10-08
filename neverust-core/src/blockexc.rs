@@ -163,9 +163,7 @@ impl ConnectionHandler for BlockExcHandler {
 
                 // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
-                    use crate::messages::{
-                        decode_message, encode_message, Block as MsgBlock, Message,
-                    };
+                    use crate::messages::{decode_message, encode_message, BlockDelivery, Message};
                     use cid::Cid;
                     use libp2p::core::upgrade::{read_length_prefixed, write_length_prefixed};
 
@@ -198,68 +196,28 @@ impl ConnectionHandler for BlockExcHandler {
                                                 let mut response_blocks = Vec::new();
 
                                                 for entry in &wantlist.entries {
-                                                    if let Ok(cid) = Cid::try_from(&entry.block[..])
-                                                    {
-                                                        if let Ok(block) =
-                                                            block_store.get(&cid).await
-                                                        {
-                                                            let total_size =
-                                                                block.data.len() as u64;
+                                                    // Extract CID from BlockAddress
+                                                    if let Some(cid_bytes) = entry.cid_bytes() {
+                                                        if let Ok(cid) = Cid::try_from(cid_bytes) {
+                                                            if let Ok(block) =
+                                                                block_store.get(&cid).await
+                                                            {
+                                                                let total_size =
+                                                                    block.data.len() as u64;
 
-                                                            // Check if this is a range request (Neverust extension)
-                                                            let is_range_request = entry.start_byte
-                                                                != 0
-                                                                || entry.end_byte != 0;
+                                                                // Full block request (range retrieval removed per compatibility requirements)
+                                                                info!("BlockExc: Serving full block {} to {} (altruistic) - {} bytes",
+                                                                cid, peer_id, total_size);
 
-                                                            let (data, range_start, range_end) =
-                                                                if is_range_request {
-                                                                    // Range request - extract requested byte range
-                                                                    let start =
-                                                                        entry.start_byte as usize;
-                                                                    let end = if entry.end_byte == 0
-                                                                    {
-                                                                        total_size as usize
-                                                                    } else {
-                                                                        std::cmp::min(
-                                                                            entry.end_byte as usize,
-                                                                            total_size as usize,
-                                                                        )
-                                                                    };
-
-                                                                    if start < block.data.len()
-                                                                        && start < end
-                                                                    {
-                                                                        let range_data = block.data
-                                                                            [start..end]
-                                                                            .to_vec();
-                                                                        info!("BlockExc: Serving range [{}, {}) of block {} to {} (altruistic) - {} bytes of {}",
-                                                                        start, end, cid, peer_id, range_data.len(), total_size);
-                                                                        (
-                                                                            range_data,
-                                                                            start as u64,
-                                                                            end as u64,
-                                                                        )
-                                                                    } else {
-                                                                        warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
-                                                                        start, end, cid, total_size);
-                                                                        continue;
-                                                                    }
-                                                                } else {
-                                                                    // Full block request (backward compatible)
-                                                                    info!("BlockExc: Serving full block {} to {} (altruistic) - {} bytes",
-                                                                    cid, peer_id, total_size);
-                                                                    (block.data.clone(), 0, 0)
-                                                                };
-
-                                                            metrics.block_sent(data.len()); // Track P2P traffic!
-                                                            response_blocks.push(MsgBlock {
-                                                                prefix: cid.to_bytes()[0..4]
-                                                                    .to_vec(),
-                                                                data,
-                                                                range_start,
-                                                                range_end,
-                                                                total_size,
-                                                            });
+                                                                metrics
+                                                                    .block_sent(block.data.len()); // Track P2P traffic!
+                                                                response_blocks.push(
+                                                                    BlockDelivery::from_cid_and_data(
+                                                                        cid.to_bytes(),
+                                                                        block.data.clone(),
+                                                                    )
+                                                                );
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -298,72 +256,31 @@ impl ConnectionHandler for BlockExcHandler {
                                                     let mut response_blocks = Vec::new();
 
                                                     for entry in &wantlist.entries {
-                                                        if let Ok(cid) =
-                                                            Cid::try_from(&entry.block[..])
-                                                        {
-                                                            if let Ok(block) =
-                                                                block_store.get(&cid).await
+                                                        // Extract CID from BlockAddress
+                                                        if let Some(cid_bytes) = entry.cid_bytes() {
+                                                            if let Ok(cid) =
+                                                                Cid::try_from(cid_bytes)
                                                             {
-                                                                let total_size =
-                                                                    block.data.len() as u64;
+                                                                if let Ok(block) =
+                                                                    block_store.get(&cid).await
+                                                                {
+                                                                    let total_size =
+                                                                        block.data.len() as u64;
 
-                                                                // Check if this is a range request (Neverust extension)
-                                                                let is_range_request =
-                                                                    entry.start_byte != 0
-                                                                        || entry.end_byte != 0;
+                                                                    // Full block request (range retrieval removed per compatibility requirements)
+                                                                    info!("BlockExc: Serving full block {} to {} (paid) - {} bytes",
+                                                                    cid, peer_id, total_size);
 
-                                                                let (data, range_start, range_end) =
-                                                                    if is_range_request {
-                                                                        // Range request - extract requested byte range
-                                                                        let start = entry.start_byte
-                                                                            as usize;
-                                                                        let end = if entry.end_byte
-                                                                            == 0
-                                                                        {
-                                                                            total_size as usize
-                                                                        } else {
-                                                                            std::cmp::min(
-                                                                                entry.end_byte
-                                                                                    as usize,
-                                                                                total_size as usize,
-                                                                            )
-                                                                        };
-
-                                                                        if start < block.data.len()
-                                                                            && start < end
-                                                                        {
-                                                                            let range_data = block
-                                                                                .data
-                                                                                [start..end]
-                                                                                .to_vec();
-                                                                            info!("BlockExc: Serving range [{}, {}) of block {} to {} (paid) - {} bytes of {}",
-                                                                            start, end, cid, peer_id, range_data.len(), total_size);
-                                                                            (
-                                                                                range_data,
-                                                                                start as u64,
-                                                                                end as u64,
-                                                                            )
-                                                                        } else {
-                                                                            warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
-                                                                            start, end, cid, total_size);
-                                                                            continue;
-                                                                        }
-                                                                    } else {
-                                                                        // Full block request (backward compatible)
-                                                                        info!("BlockExc: Serving full block {} to {} (paid) - {} bytes",
-                                                                        cid, peer_id, total_size);
-                                                                        (block.data.clone(), 0, 0)
-                                                                    };
-
-                                                                metrics.block_sent(data.len()); // Track P2P traffic!
-                                                                response_blocks.push(MsgBlock {
-                                                                    prefix: cid.to_bytes()[0..4]
-                                                                        .to_vec(),
-                                                                    data,
-                                                                    range_start,
-                                                                    range_end,
-                                                                    total_size,
-                                                                });
+                                                                    metrics.block_sent(
+                                                                        block.data.len(),
+                                                                    ); // Track P2P traffic!
+                                                                    response_blocks.push(
+                                                                        BlockDelivery::from_cid_and_data(
+                                                                            cid.to_bytes(),
+                                                                            block.data.clone(),
+                                                                        )
+                                                                    );
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -396,26 +313,27 @@ impl ConnectionHandler for BlockExcHandler {
                                                     let mut block_presences = Vec::new();
 
                                                     for entry in &wantlist.entries {
-                                                        if let Ok(cid) =
-                                                            Cid::try_from(&entry.block[..])
-                                                        {
-                                                            if let Ok(block) =
-                                                                block_store.get(&cid).await
+                                                        // Extract CID from BlockAddress
+                                                        if let Some(cid_bytes) = entry.cid_bytes() {
+                                                            if let Ok(cid) =
+                                                                Cid::try_from(cid_bytes)
                                                             {
-                                                                let block_price = (block.data.len()
-                                                                    as u64)
-                                                                    * price_per_byte;
-                                                                info!("BlockExc: Block {} available for {} units", cid, block_price);
+                                                                if let Ok(block) =
+                                                                    block_store.get(&cid).await
+                                                                {
+                                                                    let block_price =
+                                                                        (block.data.len() as u64)
+                                                                            * price_per_byte;
+                                                                    info!("BlockExc: Block {} available for {} units", cid, block_price);
 
-                                                                block_presences.push(
-                                                                    BlockPresence {
-                                                                        cid: cid.to_bytes(),
-                                                                        r#type: 0, // Have
-                                                                        price: block_price
-                                                                            .to_le_bytes()
-                                                                            .to_vec(),
-                                                                    },
-                                                                );
+                                                                    block_presences.push(
+                                                                        BlockPresence::from_cid(
+                                                                            cid.to_bytes(),
+                                                                            crate::messages::BlockPresenceType::PresenceHave,
+                                                                            block_price.to_le_bytes().to_vec(),
+                                                                        )
+                                                                    );
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -496,17 +414,12 @@ impl ConnectionHandler for BlockExcHandler {
                         requested_cid, peer_id
                     );
 
-                    // Create WantList with requested CID
+                    // Create WantList with requested CID using new BlockAddress structure
                     let wantlist = Wantlist {
-                        entries: vec![WantlistEntry {
-                            block: requested_cid.to_bytes(),
-                            priority: 1,
-                            cancel: false,
-                            want_type: WantType::WantBlock as i32,
-                            send_dont_have: true,
-                            start_byte: 0, // Full block (backward compatible)
-                            end_byte: 0,   // Full block (backward compatible)
-                        }],
+                        entries: vec![WantlistEntry::from_cid(
+                            requested_cid.to_bytes(),
+                            WantType::WantBlock,
+                        )],
                         full: true,
                     };
 
@@ -558,8 +471,11 @@ impl ConnectionHandler for BlockExcHandler {
 
                                         // Store received blocks
                                         for msg_block in &response.payload {
-                                            info!("BlockExc: Received block! prefix_len={}, data_len={}",
-                                                msg_block.prefix.len(), msg_block.data.len());
+                                            info!(
+                                                "BlockExc: Received block! cid_len={}, data_len={}",
+                                                msg_block.cid.len(),
+                                                msg_block.data.len()
+                                            );
 
                                             // Compute CID from data and verify it matches what we requested
                                             use crate::cid_blake3::blake3_cid;
@@ -684,6 +600,76 @@ impl BlockExcBehaviour {
             pending_events: std::collections::VecDeque::new(),
         };
         (behaviour, request_tx)
+    }
+
+    /// Request a specific block from a specific peer
+    ///
+    /// Sends a WantBlock message to the specified peer to request the given CID.
+    /// The peer will respond with the block if they have it.
+    ///
+    /// # Arguments
+    /// * `peer_id` - The peer to request the block from
+    /// * `cid` - The CID of the block to request
+    ///
+    /// # Returns
+    /// * `Ok(())` if the request was queued successfully
+    /// * `Err(BlockExcError::NoPeers)` if the peer is not connected
+    pub fn request_block(&mut self, peer_id: PeerId, cid: Cid) -> Result<(), BlockExcError> {
+        if !self.connected_peers.contains(&peer_id) {
+            return Err(BlockExcError::NoPeers);
+        }
+
+        info!(
+            "BlockExc: Queueing request for block {} from peer {}",
+            cid, peer_id
+        );
+
+        // Queue the RequestBlock event for this specific peer
+        self.pending_events
+            .push_back((peer_id, BlockExcFromBehaviour::RequestBlock { cid }));
+
+        Ok(())
+    }
+
+    /// Broadcast a want for a block to all connected peers
+    ///
+    /// Sends WantBlock messages to all currently connected peers requesting the given CID.
+    /// This is useful when you don't know which peer has the block.
+    ///
+    /// # Arguments
+    /// * `cid` - The CID of the block to request
+    ///
+    /// # Returns
+    /// * `Ok(usize)` - Number of peers the request was sent to
+    /// * `Err(BlockExcError::NoPeers)` if no peers are connected
+    pub fn broadcast_want(&mut self, cid: Cid) -> Result<usize, BlockExcError> {
+        if self.connected_peers.is_empty() {
+            return Err(BlockExcError::NoPeers);
+        }
+
+        let peer_count = self.connected_peers.len();
+        info!(
+            "BlockExc: Broadcasting want for block {} to {} peers",
+            cid, peer_count
+        );
+
+        // Queue RequestBlock events for all connected peers
+        for peer_id in &self.connected_peers {
+            self.pending_events
+                .push_back((*peer_id, BlockExcFromBehaviour::RequestBlock { cid }));
+        }
+
+        Ok(peer_count)
+    }
+
+    /// Get the number of currently connected peers
+    pub fn connected_peer_count(&self) -> usize {
+        self.connected_peers.len()
+    }
+
+    /// Get a list of all connected peer IDs
+    pub fn connected_peers(&self) -> Vec<PeerId> {
+        self.connected_peers.iter().copied().collect()
     }
 }
 
@@ -933,5 +919,156 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
         }
 
         std::task::Poll::Pending
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cid_blake3::blake3_cid;
+    use std::sync::Arc;
+
+    fn create_test_behaviour() -> (BlockExcBehaviour, mpsc::UnboundedSender<BlockRequest>) {
+        let block_store = Arc::new(BlockStore::new());
+        let metrics = Metrics::new();
+        BlockExcBehaviour::new(block_store, "altruistic".to_string(), 0, metrics)
+    }
+
+    #[test]
+    fn test_request_block_no_peers() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let test_cid = blake3_cid(b"test data").unwrap();
+
+        // Should fail when no peers are connected
+        let result = behaviour.request_block(PeerId::random(), test_cid);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BlockExcError::NoPeers));
+    }
+
+    #[test]
+    fn test_broadcast_want_no_peers() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let test_cid = blake3_cid(b"test data").unwrap();
+
+        // Should fail when no peers are connected
+        let result = behaviour.broadcast_want(test_cid);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BlockExcError::NoPeers));
+    }
+
+    #[test]
+    fn test_request_block_with_peer() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let test_cid = blake3_cid(b"test data").unwrap();
+        let peer_id = PeerId::random();
+
+        // Simulate peer connection
+        behaviour.connected_peers.insert(peer_id);
+
+        // Should succeed when peer is connected
+        let result = behaviour.request_block(peer_id, test_cid);
+        assert!(result.is_ok());
+
+        // Should have queued a pending event
+        assert_eq!(behaviour.pending_events.len(), 1);
+        let (queued_peer, event) = behaviour.pending_events.front().unwrap();
+        assert_eq!(*queued_peer, peer_id);
+        match event {
+            BlockExcFromBehaviour::RequestBlock { cid } => {
+                assert_eq!(*cid, test_cid);
+            }
+        }
+    }
+
+    #[test]
+    fn test_broadcast_want_with_peers() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let test_cid = blake3_cid(b"test data").unwrap();
+        let peer1 = PeerId::random();
+        let peer2 = PeerId::random();
+        let peer3 = PeerId::random();
+
+        // Simulate multiple peer connections
+        behaviour.connected_peers.insert(peer1);
+        behaviour.connected_peers.insert(peer2);
+        behaviour.connected_peers.insert(peer3);
+
+        // Should succeed and return number of peers
+        let result = behaviour.broadcast_want(test_cid);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
+
+        // Should have queued events for all peers
+        assert_eq!(behaviour.pending_events.len(), 3);
+
+        // Verify all events are for the correct CID
+        for (_, event) in &behaviour.pending_events {
+            match event {
+                BlockExcFromBehaviour::RequestBlock { cid } => {
+                    assert_eq!(*cid, test_cid);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_connected_peer_count() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        assert_eq!(behaviour.connected_peer_count(), 0);
+
+        behaviour.connected_peers.insert(PeerId::random());
+        assert_eq!(behaviour.connected_peer_count(), 1);
+
+        behaviour.connected_peers.insert(PeerId::random());
+        behaviour.connected_peers.insert(PeerId::random());
+        assert_eq!(behaviour.connected_peer_count(), 3);
+    }
+
+    #[test]
+    fn test_connected_peers() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let peer1 = PeerId::random();
+        let peer2 = PeerId::random();
+
+        behaviour.connected_peers.insert(peer1);
+        behaviour.connected_peers.insert(peer2);
+
+        let peers = behaviour.connected_peers();
+        assert_eq!(peers.len(), 2);
+        assert!(peers.contains(&peer1));
+        assert!(peers.contains(&peer2));
+    }
+
+    #[test]
+    fn test_multiple_requests_queue_correctly() {
+        let (mut behaviour, _tx) = create_test_behaviour();
+        let test_cid1 = blake3_cid(b"test data 1").unwrap();
+        let test_cid2 = blake3_cid(b"test data 2").unwrap();
+        let peer1 = PeerId::random();
+        let peer2 = PeerId::random();
+
+        behaviour.connected_peers.insert(peer1);
+        behaviour.connected_peers.insert(peer2);
+
+        // Request different blocks from different peers
+        behaviour.request_block(peer1, test_cid1).unwrap();
+        behaviour.request_block(peer2, test_cid2).unwrap();
+
+        // Should have two events queued
+        assert_eq!(behaviour.pending_events.len(), 2);
+
+        // Verify events are correctly queued
+        let (p1, evt1) = &behaviour.pending_events[0];
+        let (p2, evt2) = &behaviour.pending_events[1];
+
+        assert_eq!(*p1, peer1);
+        assert_eq!(*p2, peer2);
+
+        match evt1 {
+            BlockExcFromBehaviour::RequestBlock { cid } => assert_eq!(*cid, test_cid1),
+        }
+        match evt2 {
+            BlockExcFromBehaviour::RequestBlock { cid } => assert_eq!(*cid, test_cid2),
+        }
     }
 }
