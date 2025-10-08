@@ -244,7 +244,17 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                         cause,
                         ..
                     } => {
-                        warn!("Connection closed with {}: {:?}", peer_id, cause);
+                        // Idle connection timeouts are expected when neither side has blocks to exchange
+                        // Only warn on unexpected disconnect reasons
+                        if let Some(ref error) = cause {
+                            if error.to_string().contains("UnexpectedEof") {
+                                info!("Connection closed with {} (idle timeout)", peer_id);
+                            } else {
+                                warn!("Connection closed with {}: {:?}", peer_id, cause);
+                            }
+                        } else {
+                            info!("Connection gracefully closed with {}", peer_id);
+                        }
                         metrics.peer_disconnected();
                     }
                     SwarmEvent::Behaviour(event) => {
