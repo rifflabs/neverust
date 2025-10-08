@@ -127,11 +127,9 @@ async fn test_dial_bootstrap_node() {
     info!("⏳ Waiting for listen address...");
     let mut listening = false;
     while !listening {
-        if let Some(event) = swarm.next().await {
-            if let SwarmEvent::NewListenAddr { address, .. } = event {
-                info!("✅ Listening on: {}", address);
-                listening = true;
-            }
+        if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm.next().await {
+            info!("✅ Listening on: {}", address);
+            listening = true;
         }
     }
 
@@ -267,11 +265,9 @@ async fn test_connect_and_verify_all_protocols() {
     info!("⏳ Waiting for listen address...");
     let mut listening = false;
     while !listening {
-        if let Some(event) = swarm.next().await {
-            if let SwarmEvent::NewListenAddr { address, .. } = event {
-                info!("✅ Listening on: {}", address);
-                listening = true;
-            }
+        if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm.next().await {
+            info!("✅ Listening on: {}", address);
+            listening = true;
         }
     }
 
@@ -441,10 +437,8 @@ async fn test_connect_to_all_bootstrap_nodes() {
         // Wait for listening
         let mut listening = false;
         while !listening {
-            if let Some(event) = swarm.next().await {
-                if let SwarmEvent::NewListenAddr { .. } = event {
-                    listening = true;
-                }
+            if let Some(SwarmEvent::NewListenAddr { .. }) = swarm.next().await {
+                listening = true;
             }
         }
 
@@ -524,11 +518,9 @@ async fn test_blockexc_protocol_detailed() {
     // Wait for listening
     let mut listening = false;
     while !listening {
-        if let Some(event) = swarm.next().await {
-            if let SwarmEvent::NewListenAddr { address, .. } = event {
-                info!("✅ Listening on: {}", address);
-                listening = true;
-            }
+        if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm.next().await {
+            info!("✅ Listening on: {}", address);
+            listening = true;
         }
     }
 

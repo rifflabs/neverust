@@ -71,15 +71,9 @@ pub enum BlockExcFromBehaviour {
 #[derive(Debug, Clone)]
 pub enum BlockExcToBehaviour {
     /// Block delivered from peer
-    BlockReceived {
-        cid: cid::Cid,
-        data: Vec<u8>,
-    },
+    BlockReceived { cid: cid::Cid, data: Vec<u8> },
     /// Peer indicated they have this block
-    BlockPresence {
-        cid: cid::Cid,
-        has_block: bool,
-    },
+    BlockPresence { cid: cid::Cid, has_block: bool },
 }
 
 impl ConnectionHandler for BlockExcHandler {
@@ -99,7 +93,10 @@ impl ConnectionHandler for BlockExcHandler {
     fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
         match event {
             BlockExcFromBehaviour::RequestBlock { cid } => {
-                info!("BlockExc: Received request to fetch block {} from {}", cid, self.peer_id);
+                info!(
+                    "BlockExc: Received request to fetch block {} from {}",
+                    cid, self.peer_id
+                );
                 self.pending_request = Some(cid);
                 self.outbound_requested = false; // Reset so poll() will create new stream
             }
@@ -125,7 +122,10 @@ impl ConnectionHandler for BlockExcHandler {
         // On-demand outbound stream creation: when we have a pending block request
         if let Some(cid) = self.pending_request.take() {
             if !self.outbound_requested {
-                info!("BlockExc: Opening outbound stream to {} to request block {}", self.peer_id, cid);
+                info!(
+                    "BlockExc: Opening outbound stream to {} to request block {}",
+                    self.peer_id, cid
+                );
                 self.outbound_requested = true;
                 return std::task::Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
                     protocol: SubstreamProtocol::new(
@@ -203,40 +203,58 @@ impl ConnectionHandler for BlockExcHandler {
                                                         if let Ok(block) =
                                                             block_store.get(&cid).await
                                                         {
-                                                            let total_size = block.data.len() as u64;
+                                                            let total_size =
+                                                                block.data.len() as u64;
 
                                                             // Check if this is a range request (Neverust extension)
-                                                            let is_range_request = entry.start_byte != 0 || entry.end_byte != 0;
+                                                            let is_range_request = entry.start_byte
+                                                                != 0
+                                                                || entry.end_byte != 0;
 
-                                                            let (data, range_start, range_end) = if is_range_request {
-                                                                // Range request - extract requested byte range
-                                                                let start = entry.start_byte as usize;
-                                                                let end = if entry.end_byte == 0 {
-                                                                    total_size as usize
-                                                                } else {
-                                                                    std::cmp::min(entry.end_byte as usize, total_size as usize)
-                                                                };
+                                                            let (data, range_start, range_end) =
+                                                                if is_range_request {
+                                                                    // Range request - extract requested byte range
+                                                                    let start =
+                                                                        entry.start_byte as usize;
+                                                                    let end = if entry.end_byte == 0
+                                                                    {
+                                                                        total_size as usize
+                                                                    } else {
+                                                                        std::cmp::min(
+                                                                            entry.end_byte as usize,
+                                                                            total_size as usize,
+                                                                        )
+                                                                    };
 
-                                                                if start < block.data.len() && start < end {
-                                                                    let range_data = block.data[start..end].to_vec();
-                                                                    info!("BlockExc: Serving range [{}, {}) of block {} to {} (altruistic) - {} bytes of {}",
+                                                                    if start < block.data.len()
+                                                                        && start < end
+                                                                    {
+                                                                        let range_data = block.data
+                                                                            [start..end]
+                                                                            .to_vec();
+                                                                        info!("BlockExc: Serving range [{}, {}) of block {} to {} (altruistic) - {} bytes of {}",
                                                                         start, end, cid, peer_id, range_data.len(), total_size);
-                                                                    (range_data, start as u64, end as u64)
-                                                                } else {
-                                                                    warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
+                                                                        (
+                                                                            range_data,
+                                                                            start as u64,
+                                                                            end as u64,
+                                                                        )
+                                                                    } else {
+                                                                        warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
                                                                         start, end, cid, total_size);
-                                                                    continue;
-                                                                }
-                                                            } else {
-                                                                // Full block request (backward compatible)
-                                                                info!("BlockExc: Serving full block {} to {} (altruistic) - {} bytes",
+                                                                        continue;
+                                                                    }
+                                                                } else {
+                                                                    // Full block request (backward compatible)
+                                                                    info!("BlockExc: Serving full block {} to {} (altruistic) - {} bytes",
                                                                     cid, peer_id, total_size);
-                                                                (block.data.clone(), 0, 0)
-                                                            };
+                                                                    (block.data.clone(), 0, 0)
+                                                                };
 
                                                             metrics.block_sent(data.len()); // Track P2P traffic!
                                                             response_blocks.push(MsgBlock {
-                                                                prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                prefix: cid.to_bytes()[0..4]
+                                                                    .to_vec(),
                                                                 data,
                                                                 range_start,
                                                                 range_end,
@@ -286,40 +304,61 @@ impl ConnectionHandler for BlockExcHandler {
                                                             if let Ok(block) =
                                                                 block_store.get(&cid).await
                                                             {
-                                                                let total_size = block.data.len() as u64;
+                                                                let total_size =
+                                                                    block.data.len() as u64;
 
                                                                 // Check if this is a range request (Neverust extension)
-                                                                let is_range_request = entry.start_byte != 0 || entry.end_byte != 0;
+                                                                let is_range_request =
+                                                                    entry.start_byte != 0
+                                                                        || entry.end_byte != 0;
 
-                                                                let (data, range_start, range_end) = if is_range_request {
-                                                                    // Range request - extract requested byte range
-                                                                    let start = entry.start_byte as usize;
-                                                                    let end = if entry.end_byte == 0 {
-                                                                        total_size as usize
-                                                                    } else {
-                                                                        std::cmp::min(entry.end_byte as usize, total_size as usize)
-                                                                    };
+                                                                let (data, range_start, range_end) =
+                                                                    if is_range_request {
+                                                                        // Range request - extract requested byte range
+                                                                        let start = entry.start_byte
+                                                                            as usize;
+                                                                        let end = if entry.end_byte
+                                                                            == 0
+                                                                        {
+                                                                            total_size as usize
+                                                                        } else {
+                                                                            std::cmp::min(
+                                                                                entry.end_byte
+                                                                                    as usize,
+                                                                                total_size as usize,
+                                                                            )
+                                                                        };
 
-                                                                    if start < block.data.len() && start < end {
-                                                                        let range_data = block.data[start..end].to_vec();
-                                                                        info!("BlockExc: Serving range [{}, {}) of block {} to {} (paid) - {} bytes of {}",
+                                                                        if start < block.data.len()
+                                                                            && start < end
+                                                                        {
+                                                                            let range_data = block
+                                                                                .data
+                                                                                [start..end]
+                                                                                .to_vec();
+                                                                            info!("BlockExc: Serving range [{}, {}) of block {} to {} (paid) - {} bytes of {}",
                                                                             start, end, cid, peer_id, range_data.len(), total_size);
-                                                                        (range_data, start as u64, end as u64)
-                                                                    } else {
-                                                                        warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
+                                                                            (
+                                                                                range_data,
+                                                                                start as u64,
+                                                                                end as u64,
+                                                                            )
+                                                                        } else {
+                                                                            warn!("BlockExc: Invalid range [{}, {}) for block {} (size: {})",
                                                                             start, end, cid, total_size);
-                                                                        continue;
-                                                                    }
-                                                                } else {
-                                                                    // Full block request (backward compatible)
-                                                                    info!("BlockExc: Serving full block {} to {} (paid) - {} bytes",
+                                                                            continue;
+                                                                        }
+                                                                    } else {
+                                                                        // Full block request (backward compatible)
+                                                                        info!("BlockExc: Serving full block {} to {} (paid) - {} bytes",
                                                                         cid, peer_id, total_size);
-                                                                    (block.data.clone(), 0, 0)
-                                                                };
+                                                                        (block.data.clone(), 0, 0)
+                                                                    };
 
                                                                 metrics.block_sent(data.len()); // Track P2P traffic!
                                                                 response_blocks.push(MsgBlock {
-                                                                    prefix: cid.to_bytes()[0..4].to_vec(),
+                                                                    prefix: cid.to_bytes()[0..4]
+                                                                        .to_vec(),
                                                                     data,
                                                                     range_start,
                                                                     range_end,
@@ -437,7 +476,10 @@ impl ConnectionHandler for BlockExcHandler {
                 let peer_id = self.peer_id;
                 let block_store = self.block_store.clone();
                 let metrics = self.metrics.clone();
-                info!("BlockExc: Fully negotiated outbound stream to {} for block {}", peer_id, requested_cid);
+                info!(
+                    "BlockExc: Fully negotiated outbound stream to {} for block {}",
+                    peer_id, requested_cid
+                );
 
                 // Spawn task to handle outbound stream - send WantList and receive blocks
                 tokio::spawn(async move {
@@ -603,7 +645,8 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone)]
 pub struct BlockRequest {
     pub cid: cid::Cid,
-    pub response_tx: Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<crate::storage::Block>>>>,
+    pub response_tx:
+        Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<crate::storage::Block>>>>,
 }
 
 /// BlockExc network behaviour
@@ -715,12 +758,9 @@ impl BlockExcClient {
         let response_tx = Arc::new(tokio::sync::Mutex::new(Some(response_tx)));
 
         // Send block request to swarm via channel
-        let block_request = BlockRequest {
-            cid,
-            response_tx,
-        };
+        let block_request = BlockRequest { cid, response_tx };
 
-        if let Err(_) = self.request_tx.send(block_request) {
+        if self.request_tx.send(block_request).is_err() {
             return Err(BlockExcError::RequestFailed(
                 "Failed to send request to swarm".to_string(),
             ));
@@ -735,9 +775,7 @@ impl BlockExcClient {
                 self.metrics.block_received(block.data.len());
                 Ok(block)
             }
-            Ok(Err(_)) => Err(BlockExcError::RequestFailed(
-                "Channel closed".to_string(),
-            )),
+            Ok(Err(_)) => Err(BlockExcError::RequestFailed("Channel closed".to_string())),
             Err(_) => Err(BlockExcError::Timeout),
         }
     }
@@ -803,7 +841,12 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
     ) {
         match event {
             BlockExcToBehaviour::BlockReceived { cid, data } => {
-                info!("BlockExc behaviour: Received block {} from {} ({} bytes)", cid, peer_id, data.len());
+                info!(
+                    "BlockExc behaviour: Received block {} from {} ({} bytes)",
+                    cid,
+                    peer_id,
+                    data.len()
+                );
 
                 // Store in block store
                 let block = crate::storage::Block { cid, data };
@@ -834,7 +877,12 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
                 });
             }
             BlockExcToBehaviour::BlockPresence { cid, has_block } => {
-                info!("BlockExc behaviour: Peer {} {} block {}", peer_id, if has_block { "has" } else { "doesn't have" }, cid);
+                info!(
+                    "BlockExc behaviour: Peer {} {} block {}",
+                    peer_id,
+                    if has_block { "has" } else { "doesn't have" },
+                    cid
+                );
                 // TODO: Track which peers have which blocks for smarter routing
             }
         }
@@ -857,7 +905,11 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
 
         // Process incoming block requests
         while let std::task::Poll::Ready(Some(request)) = self.request_rx.poll_recv(cx) {
-            info!("BlockExc behaviour: Received request for block {} from {} connected peers", request.cid, self.connected_peers.len());
+            info!(
+                "BlockExc behaviour: Received request for block {} from {} connected peers",
+                request.cid,
+                self.connected_peers.len()
+            );
 
             // Store the pending request
             self.pending_requests.insert(request.cid, request.clone());

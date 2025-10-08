@@ -317,7 +317,7 @@ mod tests {
                     cancel: false,
                     want_type: WantType::WantBlock as i32,
                     send_dont_have: false,
-                    start_byte: 1024,  // Request bytes 1024-2048
+                    start_byte: 1024, // Request bytes 1024-2048
                     end_byte: 2048,
                 }],
                 full: false,
@@ -378,17 +378,17 @@ mod tests {
                     cancel: false,
                     want_type: WantType::WantBlock as i32,
                     send_dont_have: false,
-                    start_byte: 0,  // Full block
-                    end_byte: 0,    // Full block
+                    start_byte: 0, // Full block
+                    end_byte: 0,   // Full block
                 }],
                 full: false,
             }),
             payload: vec![Block {
                 prefix: vec![0x12, 0x20],
                 data: vec![1, 2, 3, 4, 5],
-                range_start: 0,  // Full block
-                range_end: 0,    // Full block
-                total_size: 0,   // Full block
+                range_start: 0, // Full block
+                range_end: 0,   // Full block
+                total_size: 0,  // Full block
             }],
             block_presences: vec![],
             pending_bytes: 0,

@@ -9,7 +9,7 @@ use crate::{
     botg::{BoTgConfig, BoTgProtocol},
     config::Config,
     metrics::Metrics,
-    p2p::{create_swarm, PeerCapability, PeerRegistry, P2PError},
+    p2p::{create_swarm, P2PError, PeerCapability, PeerRegistry},
     storage::BlockStore,
     traffic,
 };
@@ -26,7 +26,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     let blocks_path = config.data_dir.join("blocks");
     let block_store = Arc::new(
         BlockStore::new_with_path(&blocks_path)
-            .map_err(|e| P2PError::Swarm(format!("Failed to open block store: {}", e)))?
+            .map_err(|e| P2PError::Swarm(format!("Failed to open block store: {}", e)))?,
     );
     info!("Initialized persistent block store at {:?}", blocks_path);
 
@@ -49,7 +49,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     let peer_id = swarm.local_peer_id().to_string();
 
     // Initialize BlockExc client for requesting blocks from peers (via channel to swarm)
-    let blockexc_client = Arc::new(BlockExcClient::new(
+    let _blockexc_client = Arc::new(BlockExcClient::new(
         block_store.clone(),
         metrics.clone(),
         3, // max_retries
@@ -257,7 +257,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                         match event {
                             BehaviourEvent::Identify(identify_event) => {
                                 use libp2p::identify::Event;
-                                match identify_event {
+                                match *identify_event {
                                     Event::Received { peer_id, info } => {
                                         info!(
                                             "Identified peer {}: protocol_version={}, agent_version={}",

@@ -6,8 +6,8 @@
 2025/10/04-10:38:04.332711 939189 CURRENT file:  CURRENT
 2025/10/04-10:38:04.332714 939189 IDENTITY file:  IDENTITY
 2025/10/04-10:38:04.332716 939189 MANIFEST file:  MANIFEST-000005 size: 70 Bytes
-2025/10/04-10:38:04.332717 939189 SST files in ./data/blocks dir, Total Num: 0, files: 
-2025/10/04-10:38:04.332718 939189 Write Ahead Log file in ./data/blocks: 000004.log size: 0 ; 
+2025/10/04-10:38:04.332717 939189 SST files in ./data/blocks dir, Total Num: 0, files:
+2025/10/04-10:38:04.332718 939189 Write Ahead Log file in ./data/blocks: 000004.log size: 0 ;
 2025/10/04-10:38:04.332719 939189                         Options.error_if_exists: 0
 2025/10/04-10:38:04.332719 939189                       Options.create_if_missing: 1
 2025/10/04-10:38:04.332720 939189                         Options.paranoid_checks: 1
@@ -32,8 +32,8 @@
 2025/10/04-10:38:04.332729 939189                        Options.use_direct_reads: 0
 2025/10/04-10:38:04.332730 939189                        Options.use_direct_io_for_flush_and_compaction: 0
 2025/10/04-10:38:04.332730 939189          Options.create_missing_column_families: 0
-2025/10/04-10:38:04.332730 939189                              Options.db_log_dir: 
-2025/10/04-10:38:04.332731 939189                                 Options.wal_dir: 
+2025/10/04-10:38:04.332730 939189                              Options.db_log_dir:
+2025/10/04-10:38:04.332731 939189                                 Options.wal_dir:
 2025/10/04-10:38:04.332731 939189                Options.table_cache_numshardbits: 6
 2025/10/04-10:38:04.332732 939189                         Options.WAL_ttl_seconds: 0
 2025/10/04-10:38:04.332732 939189                       Options.WAL_size_limit_MB: 0
@@ -92,7 +92,7 @@
 2025/10/04-10:38:04.332753 939189                   Options.strict_bytes_per_sync: 0
 2025/10/04-10:38:04.332753 939189       Options.compaction_readahead_size: 2097152
 2025/10/04-10:38:04.332753 939189                  Options.max_background_flushes: -1
-2025/10/04-10:38:04.332754 939189 Options.daily_offpeak_time_utc: 
+2025/10/04-10:38:04.332754 939189 Options.daily_offpeak_time_utc:
 2025/10/04-10:38:04.332754 939189 Compression algorithms supported:
 2025/10/04-10:38:04.332755 939189 	kZSTD supported: 1
 2025/10/04-10:38:04.332755 939189 	kXpressCompression supported: 0

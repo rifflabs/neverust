@@ -1,8 +1,8 @@
-use neverust_core::{create_swarm, BlockStore, Block, Metrics};
+use futures_util::StreamExt;
+use neverust_core::{create_swarm, Block, BlockStore, Metrics};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::{timeout, Duration};
-use futures_util::StreamExt;
 
 /// Performance test: Peer dial latency
 ///
@@ -107,10 +107,8 @@ async fn test_content_fetch_latency() {
     // Get swarm1's address
     let addr = timeout(Duration::from_secs(2), async {
         loop {
-            if let Some(event) = swarm1.next().await {
-                if let SwarmEvent::NewListenAddr { address, .. } = event {
-                    return address;
-                }
+            if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm1.next().await {
+                return address;
             }
         }
     })
@@ -123,10 +121,8 @@ async fn test_content_fetch_latency() {
     // Wait for connection
     timeout(Duration::from_secs(2), async {
         loop {
-            if let Some(event) = swarm2.next().await {
-                if let SwarmEvent::ConnectionEstablished { .. } = event {
-                    break;
-                }
+            if let Some(SwarmEvent::ConnectionEstablished { .. }) = swarm2.next().await {
+                break;
             }
         }
     })
@@ -157,8 +153,6 @@ async fn test_content_fetch_latency() {
 #[tokio::test]
 #[ignore] // Run with --ignored flag for performance testing
 async fn test_peer_dial_p95() {
-    use std::collections::BTreeMap;
-
     const NUM_TRIALS: usize = 100;
     let mut latencies = Vec::with_capacity(NUM_TRIALS);
 
@@ -182,10 +176,8 @@ async fn test_peer_dial_p95() {
         let addr = timeout(Duration::from_secs(2), async {
             use libp2p::swarm::SwarmEvent;
             loop {
-                if let Some(event) = swarm1.next().await {
-                    if let SwarmEvent::NewListenAddr { address, .. } = event {
-                        return address;
-                    }
+                if let Some(SwarmEvent::NewListenAddr { address, .. }) = swarm1.next().await {
+                    return address;
                 }
             }
         })
@@ -198,10 +190,8 @@ async fn test_peer_dial_p95() {
         let dial_duration = timeout(Duration::from_secs(3), async {
             use libp2p::swarm::SwarmEvent;
             loop {
-                if let Some(event) = swarm2.next().await {
-                    if let SwarmEvent::ConnectionEstablished { .. } = event {
-                        return start.elapsed();
-                    }
+                if let Some(SwarmEvent::ConnectionEstablished { .. }) = swarm2.next().await {
+                    return start.elapsed();
                 }
             }
         })
@@ -217,7 +207,10 @@ async fn test_peer_dial_p95() {
     let p95 = latencies[(NUM_TRIALS as f64 * 0.95) as usize];
     let p99 = latencies[(NUM_TRIALS as f64 * 0.99) as usize];
 
-    println!("Dial latency percentiles (ms): p50={}, p95={}, p99={}", p50, p95, p99);
+    println!(
+        "Dial latency percentiles (ms): p50={}, p95={}, p99={}",
+        p50, p95, p99
+    );
 
     assert!(
         p95 <= 1000,

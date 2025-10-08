@@ -66,7 +66,8 @@ impl BlockStore {
     /// Create a new block store with in-memory backend (for testing)
     pub fn new() -> Self {
         // Use a temporary directory for in-memory testing
-        let temp_dir = std::env::temp_dir().join(format!("neverust-test-{}", rand::random::<u64>()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("neverust-test-{}", rand::random::<u64>()));
         Self::new_with_path(&temp_dir).expect("Failed to create test BlockStore")
     }
 
@@ -121,7 +122,7 @@ impl BlockStore {
             Ok(())
         })
         .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))??;
 
         info!("Stored block {}, size: {} bytes", cid_str, block.data.len());
         Ok(())
@@ -142,12 +143,10 @@ impl BlockStore {
         let key = cid_str.clone();
         let cid_copy = *cid;
 
-        let data = tokio::task::spawn_blocking(move || {
-            db.get(&key)
-        })
-        .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??
-        .ok_or_else(|| StorageError::BlockNotFound(cid_str))?;
+        let data = tokio::task::spawn_blocking(move || db.get(&key))
+            .await
+            .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))??
+            .ok_or(StorageError::BlockNotFound(cid_str))?;
 
         Ok(Block {
             cid: cid_copy,
@@ -183,7 +182,7 @@ impl BlockStore {
             Ok::<(), StorageError>(())
         })
         .await
-        .map_err(|e| StorageError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))??;
+        .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))??;
 
         info!("Deleted block {}", cid_str);
         Ok(())
@@ -197,12 +196,10 @@ impl BlockStore {
             let mut cids = Vec::new();
             let iter = db.iterator(rocksdb::IteratorMode::Start);
 
-            for item in iter {
-                if let Ok((key, _)) = item {
-                    if let Ok(key_str) = String::from_utf8(key.to_vec()) {
-                        if let Ok(cid) = key_str.parse::<Cid>() {
-                            cids.push(cid);
-                        }
+            for (key, _) in iter.flatten() {
+                if let Ok(key_str) = String::from_utf8(key.to_vec()) {
+                    if let Ok(cid) = key_str.parse::<Cid>() {
+                        cids.push(cid);
                     }
                 }
             }
@@ -222,11 +219,9 @@ impl BlockStore {
             let mut total_size = 0;
 
             let iter = db.iterator(rocksdb::IteratorMode::Start);
-            for item in iter {
-                if let Ok((_, value)) = item {
-                    block_count += 1;
-                    total_size += value.len();
-                }
+            for (_, value) in iter.flatten() {
+                block_count += 1;
+                total_size += value.len();
             }
 
             BlockStoreStats {
@@ -249,10 +244,8 @@ impl BlockStore {
             let mut batch = WriteBatch::default();
             let iter = db.iterator(rocksdb::IteratorMode::Start);
 
-            for item in iter {
-                if let Ok((key, _)) = item {
-                    batch.delete(&key);
-                }
+            for (key, _) in iter.flatten() {
+                batch.delete(&key);
             }
 
             let _ = db.write(batch);

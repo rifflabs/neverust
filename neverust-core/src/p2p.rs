@@ -49,13 +49,13 @@ pub struct Behaviour {
 
 #[derive(Debug)]
 pub enum BehaviourEvent {
-    Identify(identify::Event),
+    Identify(Box<identify::Event>),
     BlockExc(crate::blockexc::BlockExcToBehaviour),
 }
 
 impl From<identify::Event> for BehaviourEvent {
     fn from(event: identify::Event) -> Self {
-        BehaviourEvent::Identify(event)
+        BehaviourEvent::Identify(Box::new(event))
     }
 }
 
@@ -77,7 +77,13 @@ pub async fn create_swarm(
     mode: String,
     price_per_byte: u64,
     metrics: crate::metrics::Metrics,
-) -> Result<(Swarm<Behaviour>, tokio::sync::mpsc::UnboundedSender<crate::blockexc::BlockRequest>), P2PError> {
+) -> Result<
+    (
+        Swarm<Behaviour>,
+        tokio::sync::mpsc::UnboundedSender<crate::blockexc::BlockRequest>,
+    ),
+    P2PError,
+> {
     // Generate keypair for this node
     let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
@@ -91,7 +97,8 @@ pub async fn create_swarm(
     ));
 
     // Create behavior: BlockExc + Identify for testnet compatibility
-    let (blockexc_behaviour, block_request_tx) = BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
+    let (blockexc_behaviour, block_request_tx) =
+        BlockExcBehaviour::new(block_store, mode, price_per_byte, metrics);
     let behaviour = Behaviour {
         blockexc: blockexc_behaviour,
         identify: identify_config,

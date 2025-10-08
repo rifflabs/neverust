@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use neverust_core::{BlockStore, Block, create_swarm, Metrics};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use neverust_core::{create_swarm, Block, BlockStore, Metrics};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -7,23 +7,17 @@ use tokio::runtime::Runtime;
 fn bench_block_creation(c: &mut Criterion) {
     c.bench_function("block_creation_1kb", |b| {
         let data = vec![0u8; 1024]; // 1 KB
-        b.iter(|| {
-            black_box(Block::new(data.clone()).unwrap())
-        });
+        b.iter(|| black_box(Block::new(data.clone()).unwrap()));
     });
 
     c.bench_function("block_creation_1mb", |b| {
         let data = vec![0u8; 1024 * 1024]; // 1 MB
-        b.iter(|| {
-            black_box(Block::new(data.clone()).unwrap())
-        });
+        b.iter(|| black_box(Block::new(data.clone()).unwrap()));
     });
 
     c.bench_function("block_creation_10mb", |b| {
         let data = vec![0u8; 10 * 1024 * 1024]; // 10 MB
-        b.iter(|| {
-            black_box(Block::new(data.clone()).unwrap())
-        });
+        b.iter(|| black_box(Block::new(data.clone()).unwrap()));
     });
 }
 
@@ -36,7 +30,8 @@ fn bench_block_store(c: &mut Criterion) {
         let block = Block::new(vec![0u8; 1024]).unwrap();
 
         b.to_async(&rt).iter(|| async {
-            black_box(store.put(block.clone()).await.unwrap())
+            store.put(block.clone()).await.unwrap();
+            black_box(())
         });
     });
 
@@ -46,9 +41,8 @@ fn bench_block_store(c: &mut Criterion) {
         let cid = block.cid;
         rt.block_on(async { store.put(block).await.unwrap() });
 
-        b.to_async(&rt).iter(|| async {
-            black_box(store.get(&cid).await.unwrap())
-        });
+        b.to_async(&rt)
+            .iter(|| async { black_box(store.get(&cid).await.unwrap()) });
     });
 
     c.bench_function("blockstore_has_1kb", |b| {
@@ -57,9 +51,8 @@ fn bench_block_store(c: &mut Criterion) {
         let cid = block.cid;
         rt.block_on(async { store.put(block).await.unwrap() });
 
-        b.to_async(&rt).iter(|| async {
-            black_box(store.has(&cid).await)
-        });
+        b.to_async(&rt)
+            .iter(|| async { black_box(store.has(&cid).await) });
     });
 }
 
@@ -72,12 +65,9 @@ fn bench_swarm_creation(c: &mut Criterion) {
             let block_store = Arc::new(BlockStore::new());
             let metrics = Metrics::new();
             black_box(
-                create_swarm(
-                    block_store,
-                    "altruistic".to_string(),
-                    0,
-                    metrics
-                ).await.unwrap()
+                create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+                    .await
+                    .unwrap(),
             )
         });
     });
@@ -88,14 +78,16 @@ fn bench_metrics(c: &mut Criterion) {
     c.bench_function("metrics_record_block_sent", |b| {
         let metrics = Metrics::new();
         b.iter(|| {
-            black_box(metrics.block_sent(1024))
+            metrics.block_sent(1024);
+            black_box(())
         });
     });
 
     c.bench_function("metrics_record_peer_connected", |b| {
         let metrics = Metrics::new();
         b.iter(|| {
-            black_box(metrics.peer_connected())
+            metrics.peer_connected();
+            black_box(())
         });
     });
 
@@ -108,9 +100,7 @@ fn bench_metrics(c: &mut Criterion) {
             metrics.block_received(2048);
         }
 
-        b.iter(|| {
-            black_box(metrics.to_prometheus(100, 1024000))
-        });
+        b.iter(|| black_box(metrics.to_prometheus(100, 1024000)));
     });
 }
 

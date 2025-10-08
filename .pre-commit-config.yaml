@@ -1,31 +1,58 @@
-# Pre-commit hooks for Neverust
-# Run: pre-commit install
-# Manual: pre-commit run --all-files
+# Pre-commit hooks for Pal
+# See https://pre-commit.com for more information
 
 repos:
+  # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-yaml
+      - id: check-toml
       - id: check-added-large-files
-        args: ['--maxkb=1000']
+        args: [--maxkb=1000]
       - id: check-merge-conflict
-      - id: detect-private-key
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
 
+  # Rust-specific hooks
   - repo: local
     hooks:
+      # Format Rust code with rustfmt
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt
         language: system
         types: [rust]
         pass_filenames: false
+        args: [--all, --]
 
-      - id: cargo-check
-        name: cargo check
-        entry: cargo check --all
+      # Lint Rust code with clippy
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy
         language: system
         types: [rust]
         pass_filenames: false
+        args: [--all-targets, --all-features, --, -D, warnings]
+
+      # Run Rust tests
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Check for outdated dependencies (optional, only on push)
+      - id: cargo-check
+        name: cargo check
+        entry: cargo check
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]

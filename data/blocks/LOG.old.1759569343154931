@@ -3,8 +3,8 @@
 2025/10/04-09:54:07.265800 933445 DB SUMMARY
 2025/10/04-09:54:07.265802 933445 Host name (Env):  palace01
 2025/10/04-09:54:07.265802 933445 DB Session ID:  D17816E9XA7EOXGZCW2B
-2025/10/04-09:54:07.266477 933445 SST files in ./data/blocks dir, Total Num: 0, files: 
-2025/10/04-09:54:07.266480 933445 Write Ahead Log file in ./data/blocks: 
+2025/10/04-09:54:07.266477 933445 SST files in ./data/blocks dir, Total Num: 0, files:
+2025/10/04-09:54:07.266480 933445 Write Ahead Log file in ./data/blocks:
 2025/10/04-09:54:07.266482 933445                         Options.error_if_exists: 0
 2025/10/04-09:54:07.266482 933445                       Options.create_if_missing: 1
 2025/10/04-09:54:07.266483 933445                         Options.paranoid_checks: 1
@@ -29,8 +29,8 @@
 2025/10/04-09:54:07.266492 933445                        Options.use_direct_reads: 0
 2025/10/04-09:54:07.266493 933445                        Options.use_direct_io_for_flush_and_compaction: 0
 2025/10/04-09:54:07.266493 933445          Options.create_missing_column_families: 0
-2025/10/04-09:54:07.266493 933445                              Options.db_log_dir: 
-2025/10/04-09:54:07.266494 933445                                 Options.wal_dir: 
+2025/10/04-09:54:07.266493 933445                              Options.db_log_dir:
+2025/10/04-09:54:07.266494 933445                                 Options.wal_dir:
 2025/10/04-09:54:07.266494 933445                Options.table_cache_numshardbits: 6
 2025/10/04-09:54:07.266494 933445                         Options.WAL_ttl_seconds: 0
 2025/10/04-09:54:07.266495 933445                       Options.WAL_size_limit_MB: 0
@@ -89,7 +89,7 @@
 2025/10/04-09:54:07.266514 933445                   Options.strict_bytes_per_sync: 0
 2025/10/04-09:54:07.266514 933445       Options.compaction_readahead_size: 2097152
 2025/10/04-09:54:07.266515 933445                  Options.max_background_flushes: -1
-2025/10/04-09:54:07.266515 933445 Options.daily_offpeak_time_utc: 
+2025/10/04-09:54:07.266515 933445 Options.daily_offpeak_time_utc:
 2025/10/04-09:54:07.266516 933445 Compression algorithms supported:
 2025/10/04-09:54:07.266520 933445 	kZSTD supported: 1
 2025/10/04-09:54:07.266520 933445 	kXpressCompression supported: 0
@@ -101,7 +101,7 @@
 2025/10/04-09:54:07.266523 933445 	kSnappyCompression supported: 1
 2025/10/04-09:54:07.266524 933445 Fast CRC32 supported: Not supported on x86
 2025/10/04-09:54:07.266524 933445 DMutex implementation: pthread_mutex_t
-2025/10/04-09:54:07.271436 933445 [db/db_impl/db_impl_open.cc:325] Creating manifest 1 
+2025/10/04-09:54:07.271436 933445 [db/db_impl/db_impl_open.cc:325] Creating manifest 1
 2025/10/04-09:54:07.277061 933445 [db/version_set.cc:5941] Recovering from manifest file: ./data/blocks/MANIFEST-000001
 2025/10/04-09:54:07.277653 933445 [db/column_family.cc:616] --------------- Options for column family [default]:
 2025/10/04-09:54:07.277657 933445               Options.comparator: leveldb.BytewiseComparator
@@ -210,7 +210,7 @@
 2025/10/04-09:54:07.277725 933445 Options.compaction_options_universal.stop_style: kCompactionStopStyleTotalSize
 2025/10/04-09:54:07.277725 933445 Options.compaction_options_fifo.max_table_files_size: 1073741824
 2025/10/04-09:54:07.277726 933445 Options.compaction_options_fifo.allow_compaction: 0
-2025/10/04-09:54:07.277728 933445                   Options.table_properties_collectors: 
+2025/10/04-09:54:07.277728 933445                   Options.table_properties_collectors:
 2025/10/04-09:54:07.277728 933445                   Options.inplace_update_support: 0
 2025/10/04-09:54:07.277729 933445                 Options.inplace_update_num_locks: 10000
 2025/10/04-09:54:07.277729 933445               Options.memtable_prefix_bloom_size_ratio: 0.020000
@@ -245,7 +245,7 @@
 2025/10/04-09:54:07.292225 933445 [db/db_impl/db_impl_open.cc:2156] SstFileManager instance 0x5574de9b5c90
 2025/10/04-09:54:07.292805 933445 DB pointer 0x5574de9b4240
 2025/10/04-09:54:07.293097 933517 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/04-09:54:07.293101 933517 [db/db_impl/db_impl.cc:1141] 
+2025/10/04-09:54:07.293101 933517 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 0.0 total, 0.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
@@ -282,7 +282,7 @@ Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
 
 ** File Read Latency Histogram By Level [default] **
 2025/10/04-10:04:07.293280 933517 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/04-10:04:07.293943 933517 [db/db_impl/db_impl.cc:1141] 
+2025/10/04-10:04:07.293943 933517 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 600.0 total, 600.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
@@ -319,7 +319,7 @@ Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
 
 ** File Read Latency Histogram By Level [default] **
 2025/10/04-10:14:07.294161 933517 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/04-10:14:07.294709 933517 [db/db_impl/db_impl.cc:1141] 
+2025/10/04-10:14:07.294709 933517 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 1200.0 total, 600.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
@@ -356,7 +356,7 @@ Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
 
 ** File Read Latency Histogram By Level [default] **
 2025/10/04-10:24:07.294872 933517 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/04-10:24:07.295438 933517 [db/db_impl/db_impl.cc:1141] 
+2025/10/04-10:24:07.295438 933517 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 1800.0 total, 600.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
@@ -367,7 +367,7 @@ Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB
 Interval stall: 00:00:0.000 H:M:S, 0.0 percent
 Write Stall (count): write-buffer-manager-limit-stops: 0
 2025/10/04-10:34:07.295691 933517 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/04-10:34:07.296450 933517 [db/db_impl/db_impl.cc:1141] 
+2025/10/04-10:34:07.296450 933517 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 2400.0 total, 600.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s

@@ -27,7 +27,7 @@ pub struct RetriesExhaustedError(pub Cid);
 /// Tracks a single pending block request
 struct PendingBlock {
     /// The CID of the block we're waiting for
-    cid: Cid,
+    _cid: Cid,
     /// Channel sender to complete the request
     sender: oneshot::Sender<Block>,
     /// Number of retries remaining
@@ -111,7 +111,7 @@ impl PendingBlocksManager {
         let (sender, receiver) = oneshot::channel();
 
         let pending_block = PendingBlock {
-            cid,
+            _cid: cid,
             sender,
             retries_left: state.max_retries,
             last_attempt: Instant::now(),
@@ -179,10 +179,7 @@ impl PendingBlocksManager {
     /// Check if a block request is currently in-flight
     pub fn is_in_flight(&self, cid: &Cid) -> bool {
         let state = self.state.lock().unwrap();
-        state.pending
-            .get(cid)
-            .map(|p| p.in_flight)
-            .unwrap_or(false)
+        state.pending.get(cid).map(|p| p.in_flight).unwrap_or(false)
     }
 
     /// Check if a block should be retried
@@ -249,7 +246,8 @@ impl PendingBlocksManager {
     /// Check if retries are exhausted for a block
     pub fn retries_exhausted(&self, cid: &Cid) -> bool {
         let state = self.state.lock().unwrap();
-        state.pending
+        state
+            .pending
             .get(cid)
             .map(|p| p.retries_left == 0)
             .unwrap_or(false)

@@ -90,7 +90,7 @@
   write_thread_max_yield_usec=100
   advise_random_on_open=true
   info_log_level=INFO_LEVEL
-  
+
 
 [CFOptions "default"]
   memtable_max_range_deletions=0
@@ -168,7 +168,7 @@
   bloom_locality=0
   comparator=leveldb.BytewiseComparator
   compaction_filter_factory=nullptr
-  
+
 [TableOptions/BlockBasedTable "default"]
   initial_auto_readahead_size=8192
   pin_top_level_index_and_filter=true
@@ -201,4 +201,3 @@
   metadata_cache_options={unpartitioned_pinning=kFallback;partition_pinning=kFallback;top_level_index_pinning=kFallback;}
   read_amp_bytes_per_bit=0
   enable_index_compression=true
-  

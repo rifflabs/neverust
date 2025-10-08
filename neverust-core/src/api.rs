@@ -207,10 +207,8 @@ async fn get_block(
                         .parse()
                         .unwrap(),
                 );
-                resp.headers_mut().insert(
-                    "accept-ranges",
-                    "bytes".parse().unwrap(),
-                );
+                resp.headers_mut()
+                    .insert("accept-ranges", "bytes".parse().unwrap());
 
                 return Ok(resp);
             }
@@ -218,7 +216,10 @@ async fn get_block(
     }
 
     // No range request - return full block
-    info!("API: Retrieved full block {} ({} bytes)", cid_str, total_size);
+    info!(
+        "API: Retrieved full block {} ({} bytes)",
+        cid_str, total_size
+    );
 
     let response = Json(GetBlockResponse {
         cid: cid_str,
@@ -227,10 +228,8 @@ async fn get_block(
     });
 
     let mut resp = response.into_response();
-    resp.headers_mut().insert(
-        "accept-ranges",
-        "bytes".parse().unwrap(),
-    );
+    resp.headers_mut()
+        .insert("accept-ranges", "bytes".parse().unwrap());
 
     Ok(resp)
 }
@@ -340,7 +339,7 @@ async fn archivist_download(
             // Add known external Archivist testnet peers (try multiple ports)
             let external_peers = vec![
                 "91.98.135.54",
-                "10.7.1.200",  // blackberry
+                "10.7.1.200", // blackberry
             ];
             for peer in external_peers {
                 // Try common Archivist API ports
