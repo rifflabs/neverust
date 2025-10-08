@@ -6,8 +6,8 @@
 2025/10/08-22:02:21.622305 103980 CURRENT file:  CURRENT
 2025/10/08-22:02:21.622309 103980 IDENTITY file:  IDENTITY
 2025/10/08-22:02:21.622315 103980 MANIFEST file:  MANIFEST-000267 size: 713 Bytes
-2025/10/08-22:02:21.622317 103980 SST files in ./data/blocks dir, Total Num: 3, files: 000035.sst 000112.sst 000177.sst 
-2025/10/08-22:02:21.622318 103980 Write Ahead Log file in ./data/blocks: 000266.log size: 0 ; 
+2025/10/08-22:02:21.622317 103980 SST files in ./data/blocks dir, Total Num: 3, files: 000035.sst 000112.sst 000177.sst
+2025/10/08-22:02:21.622318 103980 Write Ahead Log file in ./data/blocks: 000266.log size: 0 ;
 2025/10/08-22:02:21.622320 103980                         Options.error_if_exists: 0
 2025/10/08-22:02:21.622321 103980                       Options.create_if_missing: 1
 2025/10/08-22:02:21.622322 103980                         Options.paranoid_checks: 1
@@ -32,8 +32,8 @@
 2025/10/08-22:02:21.622333 103980                        Options.use_direct_reads: 0
 2025/10/08-22:02:21.622334 103980                        Options.use_direct_io_for_flush_and_compaction: 0
 2025/10/08-22:02:21.622335 103980          Options.create_missing_column_families: 0
-2025/10/08-22:02:21.622335 103980                              Options.db_log_dir: 
-2025/10/08-22:02:21.622336 103980                                 Options.wal_dir: 
+2025/10/08-22:02:21.622335 103980                              Options.db_log_dir:
+2025/10/08-22:02:21.622336 103980                                 Options.wal_dir:
 2025/10/08-22:02:21.622336 103980                Options.table_cache_numshardbits: 6
 2025/10/08-22:02:21.622337 103980                         Options.WAL_ttl_seconds: 0
 2025/10/08-22:02:21.622338 103980                       Options.WAL_size_limit_MB: 0
@@ -92,7 +92,7 @@
 2025/10/08-22:02:21.622407 103980                   Options.strict_bytes_per_sync: 0
 2025/10/08-22:02:21.622408 103980       Options.compaction_readahead_size: 2097152
 2025/10/08-22:02:21.622409 103980                  Options.max_background_flushes: -1
-2025/10/08-22:02:21.622410 103980 Options.daily_offpeak_time_utc: 
+2025/10/08-22:02:21.622410 103980 Options.daily_offpeak_time_utc:
 2025/10/08-22:02:21.622411 103980 Compression algorithms supported:
 2025/10/08-22:02:21.622504 103980 	kZSTD supported: 1
 2025/10/08-22:02:21.622512 103980 	kXpressCompression supported: 0
@@ -212,7 +212,7 @@
 2025/10/08-22:02:21.622845 103980 Options.compaction_options_universal.stop_style: kCompactionStopStyleTotalSize
 2025/10/08-22:02:21.622845 103980 Options.compaction_options_fifo.max_table_files_size: 1073741824
 2025/10/08-22:02:21.622846 103980 Options.compaction_options_fifo.allow_compaction: 0
-2025/10/08-22:02:21.622847 103980                   Options.table_properties_collectors: 
+2025/10/08-22:02:21.622847 103980                   Options.table_properties_collectors:
 2025/10/08-22:02:21.622848 103980                   Options.inplace_update_support: 0
 2025/10/08-22:02:21.622848 103980                 Options.inplace_update_num_locks: 10000
 2025/10/08-22:02:21.622850 103980               Options.memtable_prefix_bloom_size_ratio: 0.020000
@@ -251,7 +251,7 @@
 2025/10/08-22:02:21.637645 103980 [db/db_impl/db_impl_open.cc:2156] SstFileManager instance 0x582b1807e740
 2025/10/08-22:02:21.637711 103980 DB pointer 0x582b1807c700
 2025/10/08-22:02:21.638019 104049 [db/db_impl/db_impl.cc:1139] ------- DUMPING STATS -------
-2025/10/08-22:02:21.638028 104049 [db/db_impl/db_impl.cc:1141] 
+2025/10/08-22:02:21.638028 104049 [db/db_impl/db_impl.cc:1141]
 ** DB Stats **
 Uptime(secs): 0.0 total, 0.0 interval
 Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s

@@ -113,12 +113,10 @@ pub async fn create_swarm(
     // 2. Upgrade nim-libp2p on Archivist nodes (if feasible)
     // 3. Implement custom SPR encoding matching nim-libp2p's expectations
     // 4. Disable SPR (loses signed address verification)
-    let identify_config = identify::Behaviour::new(
-        identify::Config::new_with_signed_peer_record(
-            "Archivist Node".to_string(),
-            &keypair,
-        )
-    );
+    let identify_config = identify::Behaviour::new(identify::Config::new_with_signed_peer_record(
+        "Archivist Node".to_string(),
+        &keypair,
+    ));
 
     // Create behavior: BlockExc + Identify (Identify sends SPRs)
     let (blockexc_behaviour, block_request_tx) =
