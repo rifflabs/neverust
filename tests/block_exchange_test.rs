@@ -23,8 +23,8 @@ async fn test_two_nodes_exchange_blocks() -> Result<(), Box<dyn std::error::Erro
     let metrics2 = Metrics::new();
 
     // Create two swarms (nodes) with their block stores
-    let mut swarm1 = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1).await?;
-    let mut swarm2 = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2).await?;
+    let (mut swarm1, _tx1) = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1).await?;
+    let (mut swarm2, _tx2) = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2).await?;
 
     let peer1_id = *swarm1.local_peer_id();
     let peer2_id = *swarm2.local_peer_id();

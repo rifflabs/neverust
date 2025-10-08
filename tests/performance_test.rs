@@ -2,6 +2,7 @@ use neverust_core::{create_swarm, BlockStore, Block, Metrics};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::{timeout, Duration};
+use futures_util::StreamExt;
 
 /// Performance test: Peer dial latency
 ///
@@ -17,10 +18,10 @@ async fn test_peer_dial_latency() {
     let metrics1 = Metrics::new();
     let metrics2 = Metrics::new();
 
-    let mut swarm1 = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
+    let (mut swarm1, _tx1) = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
         .await
         .expect("Failed to create swarm1");
-    let mut swarm2 = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
+    let (mut swarm2, _tx2) = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
         .await
         .expect("Failed to create swarm2");
 
@@ -77,7 +78,6 @@ async fn test_peer_dial_latency() {
 #[tokio::test]
 #[ignore] // Run with --ignored flag for performance testing
 async fn test_content_fetch_latency() {
-    use futures::StreamExt;
     use libp2p::swarm::SwarmEvent;
 
     // Create two nodes
@@ -86,10 +86,10 @@ async fn test_content_fetch_latency() {
     let metrics1 = Metrics::new();
     let metrics2 = Metrics::new();
 
-    let mut swarm1 = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1)
+    let (mut swarm1, _tx1) = create_swarm(store1.clone(), "altruistic".to_string(), 0, metrics1)
         .await
         .expect("Failed to create swarm1");
-    let mut swarm2 = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2)
+    let (mut swarm2, _tx2) = create_swarm(store2.clone(), "altruistic".to_string(), 0, metrics2)
         .await
         .expect("Failed to create swarm2");
 
@@ -168,10 +168,10 @@ async fn test_peer_dial_p95() {
         let metrics1 = Metrics::new();
         let metrics2 = Metrics::new();
 
-        let mut swarm1 = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
+        let (mut swarm1, _tx1) = create_swarm(store1, "altruistic".to_string(), 0, metrics1)
             .await
             .expect("Failed to create swarm1");
-        let mut swarm2 = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
+        let (mut swarm2, _tx2) = create_swarm(store2, "altruistic".to_string(), 0, metrics2)
             .await
             .expect("Failed to create swarm2");
 
@@ -180,7 +180,6 @@ async fn test_peer_dial_p95() {
             .expect("Failed to listen");
 
         let addr = timeout(Duration::from_secs(2), async {
-            use futures::StreamExt;
             use libp2p::swarm::SwarmEvent;
             loop {
                 if let Some(event) = swarm1.next().await {
@@ -197,7 +196,6 @@ async fn test_peer_dial_p95() {
         swarm2.dial(addr).expect("Failed to dial");
 
         let dial_duration = timeout(Duration::from_secs(3), async {
-            use futures::StreamExt;
             use libp2p::swarm::SwarmEvent;
             loop {
                 if let Some(event) = swarm2.next().await {

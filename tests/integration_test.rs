@@ -53,7 +53,7 @@ async fn test_create_swarm_and_listen() {
 
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+    let (mut swarm, _tx) = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
         .await
         .expect("Failed to create swarm");
     let peer_id = *swarm.local_peer_id();
@@ -113,7 +113,7 @@ async fn test_dial_bootstrap_node() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+    let (mut swarm, _tx) = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
         .await
         .expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
@@ -254,7 +254,7 @@ async fn test_connect_and_verify_all_protocols() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+    let (mut swarm, _tx) = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
         .await
         .expect("Failed to create swarm");
     info!("📝 Local peer: {}", swarm.local_peer_id());
@@ -430,7 +430,7 @@ async fn test_connect_to_all_bootstrap_nodes() {
         // Create fresh swarm for each test
         let block_store = Arc::new(BlockStore::new());
         let metrics = Metrics::new();
-        let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+        let (mut swarm, _tx) = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
             .await
             .expect("Failed to create swarm");
 
@@ -511,7 +511,7 @@ async fn test_blockexc_protocol_detailed() {
     // Create swarm
     let block_store = Arc::new(BlockStore::new());
     let metrics = Metrics::new();
-    let mut swarm = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+    let (mut swarm, _tx) = create_swarm(block_store, "altruistic".to_string(), 0, metrics)
         .await
         .expect("Failed to create swarm");
     let local_peer_id = *swarm.local_peer_id();
