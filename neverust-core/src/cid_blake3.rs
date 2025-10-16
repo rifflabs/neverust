@@ -13,8 +13,10 @@ use thiserror::Error;
 /// See: https://github.com/multiformats/multicodec/blob/master/table.csv
 const SHA256_CODE: u64 = 0x12; // code for sha2-256
 
-/// Archivist block codec (custom codec for archivist blocks)
-const ARCHIVIST_BLOCK_CODEC: u64 = 0xcd01; // 461 in decimal
+/// Archivist block codec (codex-block, NOT codex-manifest!)
+/// 0xcd01 = codex-manifest (for metadata)
+/// 0xcd02 = codex-block (for actual data blocks)
+const ARCHIVIST_BLOCK_CODEC: u64 = 0xcd02; // Changed from 0xcd01!
 
 #[derive(Debug, Error)]
 pub enum CidError {
@@ -39,7 +41,7 @@ pub fn blake3_hash(data: &[u8]) -> Vec<u8> {
 }
 
 /// Compute Archivist-compatible CID for data
-/// Uses SHA-256 hash and archivist-block codec (0xcd01)
+/// Uses SHA-256 hash and codex-block codec (0xcd02)
 pub fn blake3_cid(data: &[u8]) -> Result<Cid, CidError> {
     let hash = blake3_hash(data);
 
@@ -192,8 +194,8 @@ mod tests {
         // CID should be version 1
         assert_eq!(cid.version(), cid::Version::V1);
 
-        // Should use archivist-block codec (0xcd01)
-        assert_eq!(cid.codec(), 0xcd01);
+        // Should use codex-block codec (0xcd02)
+        assert_eq!(cid.codec(), 0xcd02);
 
         // Same data should produce same CID
         let cid2 = blake3_cid(data).unwrap();

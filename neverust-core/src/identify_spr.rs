@@ -212,9 +212,7 @@ mod tests {
     fn test_create_signed_peer_record() {
         let keypair = Keypair::generate_secp256k1();
         let peer_id = PeerId::from(keypair.public());
-        let addrs = vec![
-            "/ip4/127.0.0.1/tcp/8070".parse().unwrap(),
-        ];
+        let addrs = vec!["/ip4/127.0.0.1/tcp/8070".parse().unwrap()];
 
         let result = create_signed_peer_record(&keypair, peer_id, addrs);
         assert!(result.is_ok());

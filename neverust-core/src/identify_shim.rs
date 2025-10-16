@@ -11,12 +11,7 @@
 //! This preserves all functionality while fixing only the SPR encoding.
 
 use crate::identify_spr;
-use libp2p::{
-    core::Endpoint,
-    identify,
-    identity::Keypair,
-    Multiaddr, PeerId,
-};
+use libp2p::{core::Endpoint, identify, identity::Keypair, Multiaddr, PeerId};
 use std::task::{Context, Poll};
 
 /// Custom Identify Config with nim-libp2p compatible SPR
@@ -70,8 +65,9 @@ impl IdentifyBehaviour {
     pub fn new(config: IdentifyConfig) -> Self {
         // Use standard identify without SPR for now
         // This works fine with nim-libp2p (connections are stable)
-        let identify_config = identify::Config::new(config.protocol_version, config.keypair.public())
-            .with_agent_version(config.agent_version);
+        let identify_config =
+            identify::Config::new(config.protocol_version, config.keypair.public())
+                .with_agent_version(config.agent_version);
 
         let inner = identify::Behaviour::new(identify_config);
 
@@ -90,7 +86,8 @@ impl IdentifyBehaviour {
 
 // Delegate all NetworkBehaviour methods to inner
 impl libp2p::swarm::NetworkBehaviour for IdentifyBehaviour {
-    type ConnectionHandler = <identify::Behaviour as libp2p::swarm::NetworkBehaviour>::ConnectionHandler;
+    type ConnectionHandler =
+        <identify::Behaviour as libp2p::swarm::NetworkBehaviour>::ConnectionHandler;
     type ToSwarm = identify::Event;
 
     fn handle_established_inbound_connection(
