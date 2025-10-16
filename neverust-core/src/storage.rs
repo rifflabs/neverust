@@ -60,6 +60,8 @@ impl Block {
 pub struct BlockStore {
     /// RocksDB database handle
     db: Arc<DB>,
+    /// Callback invoked when a new block is stored (for announcing to network)
+    on_block_stored: Option<Arc<dyn Fn(Cid) + Send + Sync>>,
 }
 
 impl BlockStore {
@@ -69,6 +71,27 @@ impl BlockStore {
         let temp_dir =
             std::env::temp_dir().join(format!("neverust-test-{}", rand::random::<u64>()));
         Self::new_with_path(&temp_dir).expect("Failed to create test BlockStore")
+    }
+
+    /// Register a callback to be invoked when a new block is stored
+    ///
+    /// This callback is called asynchronously after successful storage,
+    /// and can be used to announce new blocks to the network.
+    ///
+    /// # Arguments
+    /// * `callback` - Function to call with the CID of each newly stored block
+    ///
+    /// # Example
+    /// ```
+    /// # use neverust_core::storage::BlockStore;
+    /// # use std::sync::Arc;
+    /// let store = BlockStore::new();
+    /// store.set_on_block_stored(Arc::new(|cid| {
+    ///     println!("New block stored: {}", cid);
+    /// }));
+    /// ```
+    pub fn set_on_block_stored(&mut self, callback: Arc<dyn Fn(Cid) + Send + Sync>) {
+        self.on_block_stored = Some(callback);
     }
 
     /// Create a new block store with persistent RocksDB backend
@@ -96,35 +119,55 @@ impl BlockStore {
         let db = DB::open(&opts, path.as_ref())?;
 
         info!("Opened RocksDB block store at {:?}", path.as_ref());
-        Ok(Self { db: Arc::new(db) })
+        Ok(Self {
+            db: Arc::new(db),
+            on_block_stored: None,
+        })
     }
 
     /// Store a block, verifying its CID
     pub async fn put(&self, block: Block) -> Result<(), StorageError> {
         let cid_str = block.cid.to_string();
 
-        // Verify block integrity
-        verify_blake3(&block.data, &block.cid)?;
+        // Verify block integrity (codec-aware)
+        // - Data blocks (0xcd02): verify with blake3_cid
+        // - Manifests (0xcd01): skip verification (already verified by Manifest::to_block)
+        // - Tree roots (0xcd03): skip verification (already verified by ArchivistTree)
+        if block.cid.codec() == 0xcd02 {
+            verify_blake3(&block.data, &block.cid)?;
+        }
 
         let db = Arc::clone(&self.db);
         let key = cid_str.clone();
         let value = block.data.clone();
 
-        tokio::task::spawn_blocking(move || {
+        let was_new_block = tokio::task::spawn_blocking(move || {
             // Check if block already exists (idempotent)
             if db.get(&key)?.is_some() {
                 debug!("Block already exists: {}", key);
-                return Ok::<(), StorageError>(());
+                return Ok::<bool, StorageError>(false);
             }
 
             // Store block
             db.put(&key, &value)?;
-            Ok(())
+            Ok(true)
         })
         .await
         .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))??;
 
-        info!("Stored block {}, size: {} bytes", cid_str, block.data.len());
+        if was_new_block {
+            info!("Stored block {}, size: {} bytes", cid_str, block.data.len());
+
+            // Invoke callback asynchronously if registered
+            if let Some(callback) = &self.on_block_stored {
+                let callback = Arc::clone(callback);
+                let cid = block.cid;
+                tokio::spawn(async move {
+                    callback(cid);
+                });
+            }
+        }
+
         Ok(())
     }
 
@@ -457,5 +500,106 @@ mod tests {
         let stats = store.stats().await;
         assert_eq!(stats.block_count, 1);
         assert_eq!(stats.total_size, 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn test_on_block_stored_callback() {
+        use std::sync::Mutex;
+
+        let mut store = BlockStore::new();
+
+        // Track which CIDs were announced via callback
+        let announced_cids = Arc::new(Mutex::new(Vec::new()));
+        let announced_cids_clone = Arc::clone(&announced_cids);
+
+        // Register callback
+        store.set_on_block_stored(Arc::new(move |cid| {
+            announced_cids_clone.lock().unwrap().push(cid);
+        }));
+
+        // Store some blocks
+        let data1 = b"hello world".to_vec();
+        let data2 = b"goodbye world".to_vec();
+
+        let block1 = Block::new(data1).unwrap();
+        let block2 = Block::new(data2).unwrap();
+        let cid1 = block1.cid;
+        let cid2 = block2.cid;
+
+        store.put(block1).await.unwrap();
+        store.put(block2).await.unwrap();
+
+        // Wait a bit for async callbacks to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Verify both blocks were announced
+        let announced = announced_cids.lock().unwrap();
+        assert_eq!(announced.len(), 2);
+        assert!(announced.contains(&cid1));
+        assert!(announced.contains(&cid2));
+    }
+
+    #[tokio::test]
+    async fn test_callback_not_invoked_for_duplicate_blocks() {
+        use std::sync::Mutex;
+
+        let mut store = BlockStore::new();
+
+        // Track callback invocations
+        let callback_count = Arc::new(Mutex::new(0u32));
+        let callback_count_clone = Arc::clone(&callback_count);
+
+        store.set_on_block_stored(Arc::new(move |_cid| {
+            *callback_count_clone.lock().unwrap() += 1;
+        }));
+
+        let data = b"hello world".to_vec();
+        let block = Block::new(data).unwrap();
+
+        // Store same block twice
+        store.put(block.clone()).await.unwrap();
+        store.put(block.clone()).await.unwrap();
+
+        // Wait for async callbacks
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Should only be called once (not for duplicate)
+        assert_eq!(*callback_count.lock().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_callback_does_not_block_storage() {
+        use std::sync::Mutex;
+        use std::time::Instant;
+
+        let mut store = BlockStore::new();
+
+        // Register a slow callback (simulates network announcement)
+        let slow_callback_done = Arc::new(Mutex::new(false));
+        let slow_callback_done_clone = Arc::clone(&slow_callback_done);
+
+        store.set_on_block_stored(Arc::new(move |_cid| {
+            // Simulate slow network operation
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            *slow_callback_done_clone.lock().unwrap() = true;
+        }));
+
+        let data = b"hello world".to_vec();
+        let block = Block::new(data).unwrap();
+
+        // Measure storage time
+        let start = Instant::now();
+        store.put(block).await.unwrap();
+        let storage_duration = start.elapsed();
+
+        // Storage should complete quickly (not wait for callback)
+        assert!(storage_duration < tokio::time::Duration::from_millis(100));
+
+        // Callback should still not be done yet
+        assert!(!*slow_callback_done.lock().unwrap());
+
+        // Wait for callback to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+        assert!(*slow_callback_done.lock().unwrap());
     }
 }

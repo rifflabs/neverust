@@ -33,6 +33,12 @@ struct MetricsInner {
     total_exchange_time_ms: AtomicU64,
     total_exchanges: AtomicU64,
 
+    // Discovery-assisted retrieval metrics
+    discovery_queries: AtomicU64,
+    discovery_successes: AtomicU64,
+    discovery_failures: AtomicU64,
+    blocks_from_discovery: AtomicU64,
+
     // Node start time for uptime calculation
     start_time: SystemTime,
 }
@@ -52,6 +58,10 @@ impl Metrics {
                 cache_misses: AtomicU64::new(0),
                 total_exchange_time_ms: AtomicU64::new(0),
                 total_exchanges: AtomicU64::new(0),
+                discovery_queries: AtomicU64::new(0),
+                discovery_successes: AtomicU64::new(0),
+                discovery_failures: AtomicU64::new(0),
+                blocks_from_discovery: AtomicU64::new(0),
                 start_time: SystemTime::now(),
             }),
         }
@@ -145,6 +155,55 @@ impl Metrics {
         }
     }
 
+    // Discovery metrics
+
+    pub fn discovery_query(&self) {
+        self.inner.discovery_queries.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn discovery_success(&self) {
+        self.inner
+            .discovery_successes
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn discovery_failure(&self) {
+        self.inner
+            .discovery_failures
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn block_from_discovery(&self) {
+        self.inner
+            .blocks_from_discovery
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn discovery_queries(&self) -> u64 {
+        self.inner.discovery_queries.load(Ordering::Relaxed)
+    }
+
+    pub fn discovery_successes(&self) -> u64 {
+        self.inner.discovery_successes.load(Ordering::Relaxed)
+    }
+
+    pub fn discovery_failures(&self) -> u64 {
+        self.inner.discovery_failures.load(Ordering::Relaxed)
+    }
+
+    pub fn blocks_from_discovery(&self) -> u64 {
+        self.inner.blocks_from_discovery.load(Ordering::Relaxed)
+    }
+
+    pub fn discovery_success_rate(&self) -> f64 {
+        let queries = self.discovery_queries();
+        if queries == 0 {
+            0.0
+        } else {
+            (self.discovery_successes() as f64 / queries as f64) * 100.0
+        }
+    }
+
     // Uptime
 
     pub fn uptime_seconds(&self) -> u64 {
@@ -204,7 +263,27 @@ impl Metrics {
              \n\
              # HELP neverust_avg_exchange_time_ms Average block exchange time in milliseconds\n\
              # TYPE neverust_avg_exchange_time_ms gauge\n\
-             neverust_avg_exchange_time_ms {:.2}\n",
+             neverust_avg_exchange_time_ms {:.2}\n\
+             \n\
+             # HELP neverust_discovery_queries_total Total number of discovery queries initiated\n\
+             # TYPE neverust_discovery_queries_total counter\n\
+             neverust_discovery_queries_total {}\n\
+             \n\
+             # HELP neverust_discovery_successes_total Total number of successful discovery queries\n\
+             # TYPE neverust_discovery_successes_total counter\n\
+             neverust_discovery_successes_total {}\n\
+             \n\
+             # HELP neverust_discovery_failures_total Total number of failed discovery queries\n\
+             # TYPE neverust_discovery_failures_total counter\n\
+             neverust_discovery_failures_total {}\n\
+             \n\
+             # HELP neverust_blocks_from_discovery_total Total blocks retrieved via discovery\n\
+             # TYPE neverust_blocks_from_discovery_total counter\n\
+             neverust_blocks_from_discovery_total {}\n\
+             \n\
+             # HELP neverust_discovery_success_rate Discovery query success rate (percentage)\n\
+             # TYPE neverust_discovery_success_rate gauge\n\
+             neverust_discovery_success_rate {:.2}\n",
             block_count,
             total_bytes,
             SystemTime::now()
@@ -221,6 +300,11 @@ impl Metrics {
             self.cache_hits(),
             self.cache_misses(),
             self.avg_exchange_time_ms(),
+            self.discovery_queries(),
+            self.discovery_successes(),
+            self.discovery_failures(),
+            self.blocks_from_discovery(),
+            self.discovery_success_rate(),
         )
     }
 }

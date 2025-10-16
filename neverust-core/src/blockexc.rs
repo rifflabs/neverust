@@ -15,6 +15,7 @@ use std::io;
 use std::sync::Arc;
 use tracing::{info, warn};
 
+use crate::discovery::Discovery;
 use crate::metrics::Metrics;
 use crate::storage::BlockStore;
 
@@ -237,6 +238,34 @@ impl ConnectionHandler for BlockExcHandler {
                                             msg.block_presences.len()
                                         );
 
+                                        // DEBUG: Log wantlist details
+                                        if let Some(ref wl) = msg.wantlist {
+                                            info!(
+                                                "BlockExc: Wantlist has {} entries, full={}",
+                                                wl.entries.len(),
+                                                wl.full
+                                            );
+                                            for (i, entry) in wl.entries.iter().enumerate() {
+                                                info!("BlockExc:   Entry[{}]: address={}, priority={}, cancel={}, want_type={}, send_dont_have={}",
+                                                    i,
+                                                    entry.address.is_some(),
+                                                    entry.priority,
+                                                    entry.cancel,
+                                                    entry.want_type,
+                                                    entry.send_dont_have
+                                                );
+                                                if let Some(addr) = &entry.address {
+                                                    info!("BlockExc:   Entry[{}]: leaf={}, cid_len={}, tree_cid_len={}, index={}",
+                                                        i,
+                                                        addr.leaf,
+                                                        addr.cid.len(),
+                                                        addr.tree_cid.len(),
+                                                        addr.index
+                                                    );
+                                                }
+                                            }
+                                        }
+
                                         // If they sent a wantlist, respond with blocks we have
                                         if let Some(wantlist) = msg.wantlist {
                                             use crate::messages::BlockPresence;
@@ -249,7 +278,9 @@ impl ConnectionHandler for BlockExcHandler {
                                                 for entry in &wantlist.entries {
                                                     // Extract CID from BlockAddress
                                                     if let Some(cid_bytes) = entry.cid_bytes() {
+                                                        info!("BlockExc: Extracted CID bytes ({} bytes)", cid_bytes.len());
                                                         if let Ok(cid) = Cid::try_from(cid_bytes) {
+                                                            info!("BlockExc: Blackberry wants CID: {}", cid);
                                                             if let Ok(block) =
                                                                 block_store.get(&cid).await
                                                             {
@@ -268,8 +299,14 @@ impl ConnectionHandler for BlockExcHandler {
                                                                         block.data.clone(),
                                                                     )
                                                                 );
+                                                            } else {
+                                                                warn!("BlockExc: Block {} NOT FOUND in local store", cid);
                                                             }
+                                                        } else {
+                                                            warn!("BlockExc: Failed to parse CID from {} bytes", cid_bytes.len());
                                                         }
+                                                    } else {
+                                                        warn!("BlockExc: No CID bytes in wantlist entry");
                                                     }
                                                 }
 
@@ -630,6 +667,10 @@ pub struct BlockExcBehaviour {
     connected_peers: std::collections::HashSet<PeerId>,
     /// Pending events to send to handlers
     pending_events: std::collections::VecDeque<(PeerId, BlockExcFromBehaviour)>,
+    /// Discovery engine for finding providers (optional)
+    discovery: Option<Arc<Discovery>>,
+    /// Blocks queued for discovery (CID -> retry count)
+    discovery_queue: std::collections::HashMap<cid::Cid, u32>,
 }
 
 impl BlockExcBehaviour {
@@ -649,8 +690,19 @@ impl BlockExcBehaviour {
             pending_requests: std::collections::HashMap::new(),
             connected_peers: std::collections::HashSet::new(),
             pending_events: std::collections::VecDeque::new(),
+            discovery: None,
+            discovery_queue: std::collections::HashMap::new(),
         };
         (behaviour, request_tx)
+    }
+
+    /// Set the discovery engine for automatic provider discovery
+    ///
+    /// When a block is not found from connected peers, the discovery engine
+    /// will be used to find providers for the block.
+    pub fn set_discovery(&mut self, discovery: Arc<Discovery>) {
+        info!("BlockExc: Discovery engine enabled");
+        self.discovery = Some(discovery);
     }
 
     /// Request a specific block from a specific peer
@@ -721,6 +773,140 @@ impl BlockExcBehaviour {
     /// Get a list of all connected peer IDs
     pub fn connected_peers(&self) -> Vec<PeerId> {
         self.connected_peers.iter().copied().collect()
+    }
+
+    /// Queue blocks for discovery when not found via BlockExc
+    ///
+    /// This is called when a block request fails because no connected peers have it.
+    /// The discovery engine will search the DHT for providers.
+    ///
+    /// # Arguments
+    /// * `cids` - List of CIDs to discover providers for
+    ///
+    /// # Returns
+    /// Number of blocks queued for discovery (0 if discovery disabled)
+    pub fn queue_find_blocks(&mut self, cids: Vec<Cid>) -> usize {
+        if self.discovery.is_none() {
+            warn!("BlockExc: Discovery disabled, cannot queue blocks for discovery");
+            return 0;
+        }
+
+        let mut queued = 0;
+        for cid in cids {
+            // Don't re-queue if already in discovery
+            use std::collections::hash_map::Entry;
+            if let Entry::Vacant(e) = self.discovery_queue.entry(cid) {
+                info!("BlockExc: Queueing block {} for discovery", cid);
+                e.insert(0); // 0 retries initially
+                queued += 1;
+            }
+        }
+
+        queued
+    }
+
+    /// Process discovery queue - find providers for queued blocks
+    ///
+    /// This should be called periodically from the poll() method to process
+    /// blocks waiting for provider discovery.
+    async fn _process_discovery_queue(&mut self) {
+        if self.discovery.is_none() {
+            return;
+        }
+
+        let discovery = self.discovery.as_ref().unwrap().clone();
+        let mut completed = Vec::new();
+
+        // Process each queued CID
+        for (cid, retry_count) in &mut self.discovery_queue {
+            const MAX_RETRIES: u32 = 3;
+
+            if *retry_count >= MAX_RETRIES {
+                warn!(
+                    "BlockExc: Discovery for block {} exceeded max retries ({})",
+                    cid, MAX_RETRIES
+                );
+                completed.push(*cid);
+                continue;
+            }
+
+            info!(
+                "BlockExc: Searching for providers of block {} (attempt {}/{})",
+                cid,
+                *retry_count + 1,
+                MAX_RETRIES
+            );
+
+            // Track discovery query
+            self.metrics.discovery_query();
+
+            // Find providers via discovery engine
+            match discovery.find(cid).await {
+                Ok(providers) if !providers.is_empty() => {
+                    info!(
+                        "BlockExc: Found {} providers for block {} via discovery",
+                        providers.len(),
+                        cid
+                    );
+
+                    // Track successful discovery
+                    self.metrics.discovery_success();
+
+                    // Request block from discovered providers
+                    for provider in providers {
+                        if self.connected_peers.contains(&provider) {
+                            // Already connected, request directly
+                            self.pending_events.push_back((
+                                provider,
+                                BlockExcFromBehaviour::RequestBlock { cid: *cid },
+                            ));
+                        } else {
+                            // TODO: Dial the provider first, then request
+                            info!(
+                                "BlockExc: Need to dial provider {} for block {}",
+                                provider, cid
+                            );
+                        }
+                    }
+
+                    // Mark as completed (found providers)
+                    completed.push(*cid);
+                }
+                Ok(_) => {
+                    // No providers found yet, increment retry count
+                    *retry_count += 1;
+                    info!(
+                        "BlockExc: No providers found for block {} (retry {}/{})",
+                        cid, *retry_count, MAX_RETRIES
+                    );
+
+                    // Track failure if max retries reached
+                    if *retry_count >= MAX_RETRIES {
+                        self.metrics.discovery_failure();
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "BlockExc: Discovery error for block {}: {} (retry {}/{})",
+                        cid,
+                        e,
+                        *retry_count + 1,
+                        MAX_RETRIES
+                    );
+                    *retry_count += 1;
+
+                    // Track failure if max retries reached
+                    if *retry_count >= MAX_RETRIES {
+                        self.metrics.discovery_failure();
+                    }
+                }
+            }
+        }
+
+        // Remove completed CIDs from queue
+        for cid in completed {
+            self.discovery_queue.remove(&cid);
+        }
     }
 }
 
@@ -885,6 +1071,18 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
                     peer_id,
                     data.len()
                 );
+
+                // Check if this block was retrieved via discovery
+                let from_discovery = self.discovery_queue.contains_key(&cid);
+                if from_discovery {
+                    info!(
+                        "BlockExc behaviour: Block {} was retrieved via discovery!",
+                        cid
+                    );
+                    self.metrics.block_from_discovery();
+                    // Remove from discovery queue since we got it
+                    self.discovery_queue.remove(&cid);
+                }
 
                 // Store in block store
                 let block = crate::storage::Block { cid, data };

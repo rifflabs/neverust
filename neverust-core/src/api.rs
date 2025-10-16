@@ -15,10 +15,14 @@ use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
+use crate::archivist_tree::ArchivistTree;
 use crate::botg::BoTgProtocol;
+use crate::chunker::Chunker;
+use crate::manifest::Manifest;
 use crate::metrics::Metrics;
 use crate::storage::{Block, BlockStore, StorageError};
 use libp2p::{identity::Keypair, Multiaddr};
+use std::io::Cursor;
 use std::sync::RwLock;
 
 /// Convert CID to base58btc string (Archivist format with 'z' prefix)
@@ -274,7 +278,7 @@ fn parse_range_header(range_str: &str, total_size: usize) -> Option<(usize, usiz
 }
 
 /// Archivist-compatible upload endpoint (POST /api/archivist/v1/data)
-/// Returns CID as plain text
+/// Returns manifest CID as plain text
 async fn archivist_upload(
     State(state): State<ApiState>,
     body: bytes::Bytes,
@@ -283,25 +287,126 @@ async fn archivist_upload(
         return Err(ApiError::BadRequest("Empty data".to_string()));
     }
 
-    info!("Archivist API: Uploading data ({} bytes)", body.len());
+    let dataset_size = body.len();
+    info!(
+        "Archivist API: Uploading data ({} bytes) - will chunk and create manifest",
+        dataset_size
+    );
 
-    // Create block from data
-    let block = Block::new(body.to_vec())
-        .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
+    // Step 1: Chunk the data and store blocks
+    let cursor = Cursor::new(body.to_vec());
+    let mut chunker = Chunker::new(cursor); // Uses default 64KB chunks
+    let mut block_cids = Vec::new();
 
-    let cid = block.cid;
+    while let Some(chunk) = chunker
+        .next_chunk()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to read chunk: {}", e)))?
+    {
+        // Create block from chunk (uses codec 0xcd02)
+        let block = Block::new(chunk)
+            .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
 
-    // Store in BlockStore
+        info!(
+            "Archivist API: Created block {} ({} bytes)",
+            block.cid,
+            block.size()
+        );
+
+        block_cids.push(block.cid);
+
+        // Store block
+        state
+            .block_store
+            .put(block)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+    }
+
+    info!(
+        "Archivist API: Stored {} blocks for dataset",
+        block_cids.len()
+    );
+
+    // Step 2: Build Archivist tree from block CIDs
+    let tree = ArchivistTree::new(block_cids)
+        .map_err(|e| ApiError::Internal(format!("Failed to create tree: {}", e)))?;
+
+    let tree_cid = tree
+        .root_cid()
+        .map_err(|e| ApiError::Internal(format!("Failed to compute tree CID: {}", e)))?;
+
+    info!("Archivist API: Built tree with root CID {}", tree_cid);
+
+    // Step 2.5: Store the tree's block list as a metadata block
+    // We serialize the block CIDs and store them with a predictable key derived from tree_cid
+    // This allows us to reconstruct the block CIDs during download
+    let tree_block_list = tree.serialize_block_list();
+
+    // Create a block from the serialized data
+    let tree_metadata_block = Block::new(tree_block_list)
+        .map_err(|e| ApiError::Internal(format!("Failed to create tree metadata block: {}", e)))?;
+
+    let tree_metadata_cid = tree_metadata_block.cid;
+
     state
         .block_store
-        .put(block)
+        .put(tree_metadata_block)
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to store tree metadata: {}", e)))?;
 
-    info!("Archivist API: Uploaded {} ({} bytes)", cid, body.len());
+    info!(
+        "Archivist API: Stored tree metadata {} ({} block CIDs) for tree {}",
+        tree_metadata_cid,
+        tree.block_cids().len(),
+        tree_cid
+    );
 
-    // Return CID as plain text (Archivist format with base58btc encoding)
-    Ok(cid_to_string(&cid))
+    // Step 3: Create manifest
+    // Store metadata CID in filename field for retrieval during download
+    // Format: "metadata:<cid>"
+    let manifest = Manifest::new(
+        tree_cid,
+        chunker.chunk_size() as u64,
+        dataset_size as u64,
+        None,                                            // codec (uses default 0xcd02)
+        None,                                            // hcodec (uses default SHA-256)
+        None,                                            // version (uses default 1)
+        Some(format!("metadata:{}", tree_metadata_cid)), // filename (stores metadata CID)
+        None,                                            // mimetype
+    );
+
+    info!(
+        "Archivist API: Created manifest for tree {} ({} blocks, {} bytes)",
+        tree_cid,
+        manifest.blocks_count(),
+        dataset_size
+    );
+
+    // Step 4: Encode manifest as block (uses codec 0xcd01)
+    let manifest_block = manifest
+        .to_block()
+        .map_err(|e| ApiError::Internal(format!("Failed to encode manifest: {}", e)))?;
+
+    let manifest_cid = manifest_block.cid;
+
+    // Step 5: Store manifest block
+    state
+        .block_store
+        .put(manifest_block)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to store manifest: {}", e)))?;
+
+    info!(
+        "Archivist API: Uploaded manifest {} (tree: {}, blocks: {}, size: {})",
+        manifest_cid,
+        tree_cid,
+        manifest.blocks_count(),
+        dataset_size
+    );
+
+    // Return manifest CID as plain text (Archivist format with base58btc encoding)
+    Ok(cid_to_string(&manifest_cid))
 }
 
 /// Archivist-compatible download endpoint (GET /api/archivist/v1/data/:cid/network/stream)
@@ -320,12 +425,142 @@ async fn archivist_download(
     // Try to get block from local store first
     match state.block_store.get(&cid).await {
         Ok(block) => {
-            info!(
-                "Archivist API: Downloaded {} from local store ({} bytes)",
-                cid_str,
-                block.size()
-            );
-            Ok(block.data)
+            // Check if this is a manifest (codec 0xcd01) or a data block (codec 0xcd02)
+            if cid.codec() == 0xcd01 {
+                // This is a manifest - decode it and fetch the actual data
+                info!(
+                    "Archivist API: {} is a manifest, decoding to get data blocks",
+                    cid_str
+                );
+
+                let manifest = Manifest::from_block(&block)
+                    .map_err(|e| ApiError::Internal(format!("Failed to decode manifest: {}", e)))?;
+
+                info!(
+                    "Archivist API: Manifest has {} blocks, dataset size: {} bytes",
+                    manifest.blocks_count(),
+                    manifest.dataset_size
+                );
+
+                // Step 1: Extract metadata CID from manifest filename field
+                let metadata_cid_str = manifest.filename.as_ref().ok_or_else(|| {
+                    ApiError::Internal(
+                        "Manifest missing metadata CID (no filename field)".to_string(),
+                    )
+                })?;
+
+                // Parse metadata CID from "metadata:<cid>" format
+                let metadata_cid_str =
+                    metadata_cid_str.strip_prefix("metadata:").ok_or_else(|| {
+                        ApiError::Internal(format!("Invalid metadata format: {}", metadata_cid_str))
+                    })?;
+
+                let metadata_cid: Cid = metadata_cid_str.parse().map_err(|e| {
+                    ApiError::Internal(format!("Failed to parse metadata CID: {}", e))
+                })?;
+
+                info!("Archivist API: Fetching metadata block {}", metadata_cid);
+
+                // Step 2: Fetch the tree metadata block to get block CIDs
+                let tree_metadata_block =
+                    state.block_store.get(&metadata_cid).await.map_err(|e| {
+                        ApiError::Internal(format!(
+                            "Failed to fetch tree metadata {}: {}",
+                            metadata_cid, e
+                        ))
+                    })?;
+
+                // Step 3: Deserialize block CIDs from metadata
+                let block_cids = ArchivistTree::deserialize_block_list(&tree_metadata_block.data)
+                    .map_err(|e| {
+                    ApiError::Internal(format!("Failed to deserialize tree metadata: {}", e))
+                })?;
+
+                info!(
+                    "Archivist API: Retrieved {} block CIDs from metadata {}",
+                    block_cids.len(),
+                    metadata_cid
+                );
+
+                // Verify block count matches manifest
+                if block_cids.len() != manifest.blocks_count() {
+                    return Err(ApiError::Internal(format!(
+                        "Block count mismatch: tree has {} blocks but manifest expects {}",
+                        block_cids.len(),
+                        manifest.blocks_count()
+                    )));
+                }
+
+                // Step 4: Fetch all blocks and reassemble data
+                let mut data: Vec<u8> = Vec::with_capacity(manifest.dataset_size as usize);
+
+                for (idx, block_cid) in block_cids.iter().enumerate() {
+                    info!(
+                        "Archivist API: Fetching block {}/{}: {}",
+                        idx + 1,
+                        block_cids.len(),
+                        block_cid
+                    );
+
+                    // Try to get block from local store first
+                    let block = match state.block_store.get(block_cid).await {
+                        Ok(b) => b,
+                        Err(StorageError::BlockNotFound(_)) => {
+                            // Block not found - this is an error for manifest downloads
+                            // In production, would fetch from network via BlockExc
+                            return Err(ApiError::Internal(format!(
+                                "Block {} not found (block {}/{})",
+                                block_cid,
+                                idx + 1,
+                                block_cids.len()
+                            )));
+                        }
+                        Err(e) => {
+                            return Err(ApiError::Internal(format!(
+                                "Failed to fetch block {}: {}",
+                                block_cid, e
+                            )));
+                        }
+                    };
+
+                    // Append block data
+                    data.extend_from_slice(&block.data);
+
+                    info!(
+                        "Archivist API: Fetched block {}/{} ({} bytes, total: {} bytes)",
+                        idx + 1,
+                        block_cids.len(),
+                        block.size(),
+                        data.len()
+                    );
+                }
+
+                // Verify final size matches manifest
+                if data.len() != manifest.dataset_size as usize {
+                    return Err(ApiError::Internal(format!(
+                        "Data size mismatch: assembled {} bytes but manifest expects {} bytes",
+                        data.len(),
+                        manifest.dataset_size
+                    )));
+                }
+
+                info!(
+                    "Archivist API: Successfully assembled manifest {} ({} blocks, {} bytes)",
+                    cid_str,
+                    block_cids.len(),
+                    data.len()
+                );
+
+                Ok(data)
+            } else {
+                // This is a data block - return it directly
+                info!(
+                    "Archivist API: Downloaded data block {} from local store ({} bytes)",
+                    cid_str,
+                    block.size()
+                );
+                Ok(block.data)
+            }
         }
         Err(StorageError::BlockNotFound(_)) => {
             // Block not found locally - try fetching from known peers via HTTP

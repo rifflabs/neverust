@@ -222,6 +222,24 @@ impl Config {
 
         Ok(multiaddrs)
     }
+
+    /// Fetch bootstrap ENRs for DiscV5
+    ///
+    /// For now, returns an empty list since DiscV5 bootstrap integration
+    /// requires ENR parsing from Archivist testnet (future work)
+    pub async fn fetch_bootstrap_enrs() -> Result<Vec<String>, ConfigError> {
+        // TODO: Convert Archivist SPRs to DiscV5 ENRs
+        // For now, we'll bootstrap via local BOOTSTRAP_NODE if provided
+        if let Ok(bootstrap_node) = std::env::var("BOOTSTRAP_NODE") {
+            tracing::info!(
+                "DiscV5: Would use bootstrap node {} (ENR conversion not yet implemented)",
+                bootstrap_node
+            );
+        }
+
+        tracing::info!("DiscV5: No bootstrap ENRs configured (will rely on local discovery)");
+        Ok(vec![])
+    }
 }
 
 impl From<StartCommand> for Config {
