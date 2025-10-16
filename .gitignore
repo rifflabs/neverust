@@ -33,3 +33,7 @@ test-results/
 # RocksDB data files (persistent storage - runtime data directories)
 data/blocks/
 crates/data/
+
+# Local configuration and logs
+config.toml
+*.log
