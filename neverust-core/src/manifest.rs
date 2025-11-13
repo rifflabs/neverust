@@ -122,6 +122,7 @@ pub struct Manifest {
 
 impl Manifest {
     /// Create a new unprotected manifest
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tree_cid: Cid,
         block_size: u64,
@@ -146,6 +147,7 @@ impl Manifest {
     }
 
     /// Create a protected manifest with erasure coding
+    #[allow(clippy::too_many_arguments)]
     pub fn new_protected(
         tree_cid: Cid,
         block_size: u64,
@@ -216,47 +218,43 @@ impl Manifest {
     /// }
     /// ```
     pub fn encode(&self) -> Result<Vec<u8>> {
-        let mut header = proto::Header::default();
-
-        // Encode tree CID as raw bytes
-        header.tree_cid = self.tree_cid.to_bytes();
-        header.block_size = self.block_size as u32;
-        header.dataset_size = self.dataset_size;
-        header.codec = self.codec as u32;
-        header.hcodec = self.hcodec as u32;
-        header.version = self.version;
-
-        // Encode filename and mimetype if present
-        if let Some(ref filename) = self.filename {
-            header.filename = filename.clone();
-        }
-        if let Some(ref mimetype) = self.mimetype {
-            header.mimetype = mimetype.clone();
-        }
+        let mut header = proto::Header {
+            tree_cid: self.tree_cid.to_bytes(),
+            block_size: self.block_size as u32,
+            dataset_size: self.dataset_size,
+            codec: self.codec as u32,
+            hcodec: self.hcodec as u32,
+            version: self.version,
+            filename: self.filename.clone().unwrap_or_default(),
+            mimetype: self.mimetype.clone().unwrap_or_default(),
+            ..Default::default()
+        };
 
         // Encode erasure info if protected
         if let Some(ref erasure) = self.erasure {
-            let mut erasure_info = proto::ErasureInfo::default();
-            erasure_info.ec_k = erasure.ec_k;
-            erasure_info.ec_m = erasure.ec_m;
-            erasure_info.original_tree_cid = erasure.original_tree_cid.to_bytes();
-            erasure_info.original_dataset_size = erasure.original_dataset_size;
-            erasure_info.protected_strategy = erasure.protected_strategy as u32;
+            let verification =
+                erasure
+                    .verification
+                    .as_ref()
+                    .map(|verification| proto::VerificationInfo {
+                        verify_root: verification.verify_root.to_bytes(),
+                        slot_roots: verification
+                            .slot_roots
+                            .iter()
+                            .map(|cid| cid.to_bytes())
+                            .collect(),
+                        cell_size: verification.cell_size as u32,
+                        verifiable_strategy: verification.verifiable_strategy as u32,
+                    });
 
-            // Encode verification info if verifiable
-            if let Some(ref verification) = erasure.verification {
-                let mut verification_info = proto::VerificationInfo::default();
-                verification_info.verify_root = verification.verify_root.to_bytes();
-                verification_info.slot_roots = verification
-                    .slot_roots
-                    .iter()
-                    .map(|cid| cid.to_bytes())
-                    .collect();
-                verification_info.cell_size = verification.cell_size as u32;
-                verification_info.verifiable_strategy = verification.verifiable_strategy as u32;
-
-                erasure_info.verification = Some(verification_info);
-            }
+            let erasure_info = proto::ErasureInfo {
+                ec_k: erasure.ec_k,
+                ec_m: erasure.ec_m,
+                original_tree_cid: erasure.original_tree_cid.to_bytes(),
+                original_dataset_size: erasure.original_dataset_size,
+                protected_strategy: erasure.protected_strategy as u32,
+                verification,
+            };
 
             header.erasure = Some(erasure_info);
         }
@@ -266,8 +264,7 @@ impl Manifest {
         header.encode(&mut buf)?;
 
         // Wrap in dag-pb format (field 1 = Data)
-        let mut pb_node = proto::DagPbNode::default();
-        pb_node.data = buf;
+        let pb_node = proto::DagPbNode { data: buf };
 
         let mut result = Vec::new();
         pb_node.encode(&mut result)?;

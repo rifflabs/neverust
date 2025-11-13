@@ -27,7 +27,10 @@ async fn test_manifest_upload_download_roundtrip() {
         block_cids.push(cid);
     }
 
-    assert!(!block_cids.is_empty(), "Should have created at least one block");
+    assert!(
+        !block_cids.is_empty(),
+        "Should have created at least one block"
+    );
 
     // Step 2: Verify all blocks are stored and retrievable
     for cid in &block_cids {
@@ -73,10 +76,10 @@ async fn test_manifest_with_metadata() {
         tree_cid,
         DEFAULT_BLOCK_SIZE as u64,
         test_data.len() as u64,
-        Some(0xcd02),        // codex-block codec
-        Some(0x12),          // sha2-256 codec
-        Some(1),             // version
-        None,                // filename
+        Some(0xcd02),                   // codex-block codec
+        Some(0x12),                     // sha2-256 codec
+        Some(1),                        // version
+        None,                           // filename
         Some("text/plain".to_string()), // mimetype
     );
 
@@ -122,7 +125,10 @@ async fn test_large_data_manifest() {
         reconstructed.extend_from_slice(&block.data);
     }
 
-    assert_eq!(reconstructed, test_data, "Data should match after reconstruction");
+    assert_eq!(
+        reconstructed, test_data,
+        "Data should match after reconstruction"
+    );
 }
 
 /// Test manifest encoding and decoding
@@ -139,18 +145,15 @@ async fn test_manifest_encoding_decoding() {
         Some(0xcd02),
         Some(0x12),
         Some(1),
-        None, // filename
+        None,                                         // filename
         Some("application/octet-stream".to_string()), // mimetype
     );
 
     // Encode
-    let encoded = original
-        .encode()
-        .expect("Failed to encode manifest");
+    let encoded = original.encode().expect("Failed to encode manifest");
 
     // Decode
-    let decoded = Manifest::decode(&encoded)
-        .expect("Failed to decode manifest");
+    let decoded = Manifest::decode(&encoded).expect("Failed to decode manifest");
 
     // Verify
     assert_eq!(decoded.tree_cid, original.tree_cid);

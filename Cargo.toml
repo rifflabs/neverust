@@ -1,12 +1,6 @@
 [workspace]
 members = [
     "neverust-core",
-    "crates/tgp",
-    "crates/common",
-    "crates/crypto",
-    "crates/proofs",
-    "crates/storage",
-    "crates/transport-udp",
 ]
 resolver = "2"
 

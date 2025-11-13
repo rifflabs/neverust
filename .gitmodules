@@ -1,0 +1,3 @@
+[submodule "archivist-node"]
+	path = archivist-node
+	url = https://github.com/durability-labs/archivist-node.git
