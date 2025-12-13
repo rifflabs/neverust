@@ -85,7 +85,7 @@ impl BlockStore {
     /// ```
     /// # use neverust_core::storage::BlockStore;
     /// # use std::sync::Arc;
-    /// let store = BlockStore::new();
+    /// let mut store = BlockStore::new();
     /// store.set_on_block_stored(Arc::new(|cid| {
     ///     println!("New block stored: {}", cid);
     /// }));
