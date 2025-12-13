@@ -1,12 +1,11 @@
 //! P2P networking layer using rust-libp2p
 //!
-//! Implements the core P2P stack with TCP+Noise+Mplex transports
+//! Implements the core P2P stack with TCP+Noise+Yamux transports
 //! and BlockExc protocol (matching Archivist exactly).
 //!
 //! Identify protocol is used for SPR (Signed Peer Record) exchange.
 
-use libp2p::{identify, noise, tcp, PeerId, Swarm, SwarmBuilder};
-use libp2p_mplex as mplex;
+use libp2p::{identify, noise, tcp, yamux, PeerId, Swarm, SwarmBuilder};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -127,24 +126,14 @@ pub async fn create_swarm(
     };
 
     // Build swarm with TCP transport to match Archivist testnet nodes
-    // Archivist uses TCP+Noise+Mplex (NOT QUIC)
-    // CRITICAL: Archivist uses 5-minute Mplex timeouts - we must match them
-    let mplex_config = || {
-        let mut cfg = mplex::Config::default();
-        // Match Archivist's 5-minute timeouts (archivist.nim:210)
-        // Default rust-libp2p Mplex uses much shorter timeouts (~30s)
-        // which causes immediate disconnection from Archivist nodes
-        cfg.set_max_buffer_size(usize::MAX);
-        cfg.set_split_send_size(16 * 1024);
-        cfg
-    };
-
+    // Using TCP+Noise+Yamux
+    // Note: Archivist uses 5-minute timeouts - we set this via idle_connection_timeout
     let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
         .with_tokio()
         .with_tcp(
             tcp::Config::default().nodelay(true),
             noise::Config::new,
-            mplex_config,
+            yamux::Config::default,
         )
         .map_err(|e| P2PError::Transport(e.to_string()))?
         .with_behaviour(|_| behaviour)
