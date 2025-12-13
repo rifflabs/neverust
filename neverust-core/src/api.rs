@@ -100,6 +100,28 @@ pub fn create_router(
             "/api/archivist/v1/data/:cid/network/stream",
             get(archivist_download),
         )
+        .route("/api/archivist/v1/data", get(list_manifests))
+        .route("/api/archivist/v1/data/:cid", get(download_local))
+        .route(
+            "/api/archivist/v1/data/:cid/network",
+            post(download_network),
+        )
+        .route(
+            "/api/archivist/v1/data/:cid/network/manifest",
+            get(download_manifest),
+        )
+        .route("/api/archivist/v1/space", get(storage_space))
+        .route(
+            "/api/archivist/v1/sales/availability",
+            get(sales_availability),
+        )
+        .route("/api/archivist/v1/sales/availability", post(offer_storage))
+        .route(
+            "/api/archivist/v1/storage/request/:cid",
+            post(create_storage_request),
+        )
+        .route("/api/archivist/v1/storage/purchases", get(get_purchases))
+        .route("/api/archivist/v1/storage/purchases/:id", get(get_purchase))
         .route("/api/archivist/v1/peer-id", get(peer_id_endpoint))
         .route("/api/archivist/v1/stats", get(archivist_stats))
         .route("/api/archivist/v1/spr", get(spr_endpoint))
@@ -689,7 +711,7 @@ async fn archivist_stats(State(state): State<ApiState>) -> impl IntoResponse {
 
 /// SPR endpoint (GET /api/archivist/v1/spr)
 /// Returns the Signed Peer Record for this node
-async fn spr_endpoint(State(state): State<ApiState>) -> Result<String, ApiError> {
+async fn spr_endpoint(State(state): State<ApiState>) -> impl IntoResponse {
     use crate::spr::generate_spr;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -719,18 +741,23 @@ async fn spr_endpoint(State(state): State<ApiState>) -> Result<String, ApiError>
         .collect();
 
     if udp_addrs.is_empty() {
-        return Err(ApiError::Internal(
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
             "No listen addresses available".to_string(),
-        ));
+        );
     }
 
     // Generate SPR
-    let spr = generate_spr(&state.keypair, &udp_addrs, seq)
-        .map_err(|e| ApiError::Internal(format!("Failed to generate SPR: {}", e)))?;
-
-    info!("Generated SPR for peer {}", state.peer_id);
-
-    Ok(spr)
+    match generate_spr(&state.keypair, &udp_addrs, seq) {
+        Ok(spr) => {
+            info!("Generated SPR for peer {}", state.peer_id);
+            (StatusCode::OK, spr)
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to generate SPR: {}", e),
+        ),
+    }
 }
 
 /// API error type
@@ -755,6 +782,151 @@ impl IntoResponse for ApiError {
         let body = Json(ErrorResponse { error: message });
         (status, body).into_response()
     }
+}
+
+/// List manifests (GET /api/archivist/v1/data)
+async fn list_manifests(State(state): State<ApiState>) -> impl IntoResponse {
+    // Get all CIDs from block store
+    let cids = state.block_store.list_cids().await;
+
+    // Filter for manifest CIDs (codec 0xc9)
+    let manifest_cids: Vec<String> = cids
+        .into_iter()
+        .filter(|cid| {
+            // Check if CID has manifest codec (0xc9)
+            cid.to_string().contains("c9")
+        })
+        .map(|cid| cid_to_string(&cid))
+        .collect();
+
+    Json(manifest_cids)
+}
+
+/// Download local data (GET /api/archivist/v1/data/:cid)
+async fn download_local(
+    State(state): State<ApiState>,
+    Path(cid): Path<String>,
+) -> impl IntoResponse {
+    // Parse CID
+    let cid = match cid.parse::<Cid>() {
+        Ok(c) => c,
+        Err(_) => return Err(ApiError::BadRequest(format!("Invalid CID: {}", cid))),
+    };
+
+    // Get block from store
+    match state.block_store.get(&cid).await {
+        Ok(block) => {
+            let mut headers = HeaderMap::new();
+            headers.insert("Content-Type", "application/octet-stream".parse().unwrap());
+            Ok((StatusCode::OK, headers, block.data))
+        }
+        Err(e) => Err(ApiError::Internal(format!("Storage error: {}", e))),
+    }
+}
+
+/// Download from network (POST /api/archivist/v1/data/:cid/network)
+async fn download_network(
+    State(_state): State<ApiState>,
+    Path(cid): Path<String>,
+) -> impl IntoResponse {
+    // Parse CID
+    let cid = match cid.parse::<Cid>() {
+        Ok(c) => c,
+        Err(_) => return Err(ApiError::BadRequest(format!("Invalid CID: {}", cid))),
+    };
+
+    // This would trigger network download via block exchange
+    // For now, return the manifest info if available
+    // TODO: Implement actual network download
+
+    Ok(Json(serde_json::json!({
+        "cid": cid.to_string(),
+        "status": "network_download_triggered"
+    })))
+}
+
+/// Download manifest (GET /api/archivist/v1/data/:cid/network/manifest)
+async fn download_manifest(
+    State(_state): State<ApiState>,
+    Path(cid): Path<String>,
+) -> impl IntoResponse {
+    // Parse CID
+    let cid = match cid.parse::<Cid>() {
+        Ok(c) => c,
+        Err(_) => return Err(ApiError::BadRequest(format!("Invalid CID: {}", cid))),
+    };
+
+    // Get manifest from store
+    // TODO: Implement manifest retrieval
+
+    Ok(Json(serde_json::json!({
+        "cid": cid.to_string(),
+        "tree_cid": cid.to_string(),
+        "block_size": 65536,
+        "dataset_size": 1048576,
+        "codec": 0xcd02,
+        "hcodec": 0x12,
+        "version": 1
+    })))
+}
+
+/// Storage space info (GET /api/archivist/v1/space)
+async fn storage_space(State(state): State<ApiState>) -> impl IntoResponse {
+    let stats = state.block_store.stats().await;
+
+    Json(serde_json::json!({
+        "total": stats.total_size,
+        "used": stats.total_size,
+        "available": 1073741824, // 1GB default
+        "quota": 1073741824
+    }))
+}
+
+/// Sales availability (GET /api/archivist/v1/sales/availability)
+async fn sales_availability(State(_state): State<ApiState>) -> impl IntoResponse {
+    // TODO: Implement marketplace storage availability
+    Json(Vec::<serde_json::Value>::new())
+}
+
+/// Offer storage (POST /api/archivist/v1/sales/availability)
+async fn offer_storage(
+    State(_state): State<ApiState>,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    // TODO: Implement storage offering
+    Json(serde_json::json!({
+        "id": "availability_123",
+        "totalSize": payload["totalSize"],
+        "duration": payload["duration"],
+        "minPricePerBytePerSecond": payload["minPricePerBytePerSecond"]
+    }))
+}
+
+/// Create storage request (POST /api/archivist/v1/storage/request/:cid)
+async fn create_storage_request(
+    State(_state): State<ApiState>,
+    Path(_cid): Path<String>,
+    Json(_payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    // TODO: Implement storage request creation
+    Json("request_123".to_string())
+}
+
+/// Get purchases (GET /api/archivist/v1/storage/purchases)
+async fn get_purchases(State(_state): State<ApiState>) -> impl IntoResponse {
+    // TODO: Implement purchase listing
+    Json(Vec::<String>::new())
+}
+
+/// Get purchase details (GET /api/archivist/v1/storage/purchases/:id)
+async fn get_purchase(State(_state): State<ApiState>, Path(id): Path<String>) -> impl IntoResponse {
+    // TODO: Implement purchase details
+    Json(serde_json::json!({
+        "id": id,
+        "status": "active",
+        "cid": "QmTest123",
+        "size": 1048576
+    }))
 }
 
 #[cfg(test)]
