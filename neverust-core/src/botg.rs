@@ -18,10 +18,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
-// Re-export TGP types we'll use
-pub use consensus_common::types::StreamId;
-pub use consensus_tgp::{TgpConfig, TgpHandle};
-pub use consensus_transport_udp::api::TransportHandle;
+// Re-export TGP types from Citadel Transfer
+pub use citadel_transfer::{StreamId, TgpConfig, TgpHandle, TransportConfig, TransportHandle};
 
 /// BoTG message types for UDP communication
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,8 +257,8 @@ impl BoTgProtocol {
     ) -> Result<(Self, Arc<TransportHandle>), BoTgError> {
         info!("BoTG: Creating UDP transport on {}", bind_addr);
 
-        // Create UDP transport
-        let transport_config = consensus_transport_udp::api::TransportConfig {
+        // Create UDP transport via Citadel Transfer
+        let transport_config = TransportConfig {
             bind: bind_addr,
             batch: 64,               // Batch size for packet processing
             sndbuf: 4 * 1024 * 1024, // 4MB send buffer

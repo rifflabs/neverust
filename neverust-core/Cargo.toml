@@ -36,12 +36,8 @@ rocksdb = "0.22"
 num_cpus = "1.16"
 discv5 = "0.10"
 
-# TGP (Two Generals Protocol) for Block-over-TGP (BoTG)
-consensus-tgp = { path = "../crates/tgp" }
-consensus-common = { path = "../crates/common" }
-consensus-peerexc = { path = "../crates/peerexc" }
-consensus-transport-udp = { path = "../crates/transport-udp" }
-consensus-storage = { path = "../crates/storage" }
+# High-performance transfer (TGP-style) via Citadel
+citadel-transfer = { git = "https://github.com/rifflabs/citadel.git", branch = "main" }
 
 [dev-dependencies]
 tokio-test = "0.4"
