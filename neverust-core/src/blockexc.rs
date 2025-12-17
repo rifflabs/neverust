@@ -11,6 +11,8 @@ use libp2p::swarm::{
     ConnectionHandler, ConnectionHandlerEvent, StreamProtocol, SubstreamProtocol,
 };
 use libp2p::PeerId;
+use serde::Deserialize;
+use serde::Serialize;
 use std::io;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -80,6 +82,41 @@ async fn write_length_prefixed<W: AsyncWriteExt + Unpin>(
     Ok(())
 }
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub enum BlockExcMode {
+    #[default]
+    Altruistic,
+    MarketPlace{ price_per_byte: u64 },
+}
+impl std::str::FromStr for BlockExcMode {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "altruistic" => Ok(Self::Altruistic),
+            "marketplace" => Ok(Self::MarketPlace { price_per_byte: 1 }),
+            _ => Err("unrecognised mode (options: 'altruistic', 'marketplace')")
+        }
+    }
+}
+
+
+impl BlockExcMode {
+    pub fn mode_string(&self) -> String {
+        match self {
+            Self::Altruistic => "altruistic".to_string(),
+            Self::MarketPlace { price_per_byte } => format!("Market @ {} per byte", price_per_byte)
+        }
+    }
+    fn price_per_byte(&self) -> Option<u64> {
+        if let Self::MarketPlace { price_per_byte } = self {
+            Some(*price_per_byte)
+        } else {
+            None
+        }
+    }
+
+}
 /// BlockExc connection handler
 pub struct BlockExcHandler {
     peer_id: PeerId,
@@ -90,9 +127,7 @@ pub struct BlockExcHandler {
     /// Shared block store for reading/writing blocks
     block_store: Arc<BlockStore>,
     /// Node operating mode (altruistic or marketplace)
-    mode: String,
-    /// Price per byte in marketplace mode
-    price_per_byte: u64,
+    mode: BlockExcMode,
     /// Metrics collector for tracking P2P traffic
     metrics: Metrics,
     /// Pending block request (if any)
@@ -103,8 +138,7 @@ impl BlockExcHandler {
     pub fn new(
         peer_id: PeerId,
         block_store: Arc<BlockStore>,
-        mode: String,
-        price_per_byte: u64,
+        mode: BlockExcMode,
         metrics: Metrics,
     ) -> Self {
         BlockExcHandler {
@@ -113,7 +147,6 @@ impl BlockExcHandler {
             has_active_stream: false,
             block_store,
             mode,
-            price_per_byte,
             metrics,
             pending_request: None,
         }
@@ -210,9 +243,8 @@ impl ConnectionHandler for BlockExcHandler {
                 let peer_id = self.peer_id;
                 let block_store = self.block_store.clone();
                 let mode = self.mode.clone();
-                let price_per_byte = self.price_per_byte;
                 let metrics = self.metrics.clone();
-                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {}, price: {} per byte)", peer_id, mode, price_per_byte);
+                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {})", peer_id, mode.mode_string());
 
                 // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
@@ -270,7 +302,7 @@ impl ConnectionHandler for BlockExcHandler {
                                         if let Some(wantlist) = msg.wantlist {
                                             use crate::messages::BlockPresence;
 
-                                            if mode == "altruistic" {
+                                            if let BlockExcMode::Altruistic = mode {
                                                 // ALTRUISTIC MODE: Serve blocks freely without payment
                                                 info!("BlockExc: ALTRUISTIC MODE - serving blocks freely to {}", peer_id);
                                                 let mut response_blocks = Vec::new();
@@ -332,7 +364,7 @@ impl ConnectionHandler for BlockExcHandler {
                                                         break;
                                                     }
                                                 }
-                                            } else if mode == "marketplace" {
+                                            } else if let BlockExcMode::MarketPlace { price_per_byte: _ } = mode {
                                                 // MARKETPLACE MODE: Check payment before serving
                                                 info!("BlockExc: MARKETPLACE MODE - checking payment from {}", peer_id);
 
@@ -411,7 +443,7 @@ impl ConnectionHandler for BlockExcHandler {
                                                                 {
                                                                     let block_price =
                                                                         (block.data.len() as u64)
-                                                                            * price_per_byte;
+                                                                            * mode.price_per_byte().unwrap_or_default();
                                                                     info!("BlockExc: Block {} available for {} units", cid, block_price);
 
                                                                     block_presences.push(
@@ -449,9 +481,7 @@ impl ConnectionHandler for BlockExcHandler {
                                                         }
                                                     }
                                                 }
-                                            } else {
-                                                warn!("BlockExc: Unknown mode '{}', defaulting to altruistic", mode);
-                                            }
+                                            } 
                                         }
                                     }
                                     Err(e) => {
@@ -656,8 +686,7 @@ pub struct BlockRequest {
 /// BlockExc network behaviour
 pub struct BlockExcBehaviour {
     block_store: Arc<BlockStore>,
-    mode: String,
-    price_per_byte: u64,
+    mode: BlockExcMode,
     metrics: Metrics,
     /// Channel for receiving block requests
     request_rx: mpsc::UnboundedReceiver<BlockRequest>,
@@ -676,15 +705,13 @@ pub struct BlockExcBehaviour {
 impl BlockExcBehaviour {
     pub fn new(
         block_store: Arc<BlockStore>,
-        mode: String,
-        price_per_byte: u64,
+        mode: BlockExcMode,
         metrics: Metrics,
     ) -> (Self, mpsc::UnboundedSender<BlockRequest>) {
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let behaviour = Self {
             block_store,
             mode,
-            price_per_byte,
             metrics,
             request_rx,
             pending_requests: std::collections::HashMap::new(),
@@ -1019,7 +1046,6 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
             peer,
             self.block_store.clone(),
             self.mode.clone(),
-            self.price_per_byte,
             self.metrics.clone(),
         ))
     }
@@ -1036,7 +1062,6 @@ impl libp2p::swarm::NetworkBehaviour for BlockExcBehaviour {
             peer,
             self.block_store.clone(),
             self.mode.clone(),
-            self.price_per_byte,
             self.metrics.clone(),
         ))
     }

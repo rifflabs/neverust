@@ -40,7 +40,6 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     let (mut swarm, block_request_tx, keypair) = create_swarm(
         block_store.clone(),
         config.mode.clone(),
-        config.price_per_byte,
         metrics.clone(),
     )
     .await?;

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+use crate::blockexc::BlockExcMode;
+
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("IO error: {0}")]
@@ -53,8 +55,8 @@ pub struct StartCommand {
     pub api_port: u16,
 
     /// Node operating mode: altruistic (free blocks) or marketplace (paid blocks)
-    #[arg(long, default_value = "altruistic")]
-    pub mode: String,
+    #[arg(long)]
+    pub mode: BlockExcMode,
 
     /// Price per byte in marketplace mode (in smallest currency unit)
     #[arg(long, default_value_t = 1)]
@@ -78,8 +80,7 @@ pub struct Config {
     pub log_level: String,
     #[serde(default)]
     pub bootstrap_nodes: Vec<String>,
-    pub mode: String,
-    pub price_per_byte: u64,
+    pub mode: BlockExcMode,
 }
 
 impl Default for Config {
@@ -91,8 +92,7 @@ impl Default for Config {
             api_port: 8080,
             log_level: "info".to_string(),
             bootstrap_nodes: Vec::new(),
-            mode: "altruistic".to_string(),
-            price_per_byte: 1,
+            mode: BlockExcMode::MarketPlace { price_per_byte: 1 }
         }
     }
 }
@@ -252,7 +252,6 @@ impl From<StartCommand> for Config {
             log_level: cmd.log_level,
             bootstrap_nodes: cmd.bootstrap_node,
             mode: cmd.mode,
-            price_per_byte: cmd.price_per_byte,
         }
     }
 }
