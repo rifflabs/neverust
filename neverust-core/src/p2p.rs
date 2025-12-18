@@ -156,7 +156,7 @@ mod tests {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
         let (swarm, _block_request_tx, _keypair) =
-            create_swarm(block_store, "altruistic".to_string(), 1, metrics)
+            create_swarm(block_store, BlockExcMode::Altruistic, metrics)
                 .await
                 .unwrap();
         assert!(swarm.local_peer_id().to_string().len() > 0);
@@ -167,7 +167,7 @@ mod tests {
         let block_store = Arc::new(BlockStore::new());
         let metrics = crate::metrics::Metrics::new();
         let (mut swarm, _block_request_tx, _keypair) =
-            create_swarm(block_store, "altruistic".to_string(), 1, metrics)
+            create_swarm(block_store, BlockExcMode::Altruistic, metrics)
                 .await
                 .unwrap();
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();

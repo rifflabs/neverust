@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use neverust_core::{create_swarm, Block, BlockStore, Metrics};
+use neverust_core::{blockexc::BlockExcMode, create_swarm, Block, BlockStore, Metrics};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -65,7 +65,7 @@ fn bench_swarm_creation(c: &mut Criterion) {
             let block_store = Arc::new(BlockStore::new());
             let metrics = Metrics::new();
             black_box(
-                create_swarm(block_store, "altruistic".to_string(), 0, metrics)
+                create_swarm(block_store, BlockExcMode::Altruistic, metrics)
                     .await
                     .unwrap(),
             )
