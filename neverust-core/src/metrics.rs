@@ -68,7 +68,8 @@ impl Metrics {
     }
 
     // Peer connection metrics
-
+    // Eventual consistency between cores is all that's required. Metrics that are slightly off
+    // because updates have not propogated across caches is non critical at time of writing.
     pub fn peer_connected(&self) {
         self.inner.peer_connections.fetch_add(1, Ordering::Relaxed);
         self.inner.total_peers_seen.fetch_add(1, Ordering::Relaxed);
