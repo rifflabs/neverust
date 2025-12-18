@@ -26,6 +26,7 @@ tempfile = "3"
 futures-util = "0.3"
 libp2p = { version = "0.56", features = ["tcp", "ping", "tokio", "macros", "secp256k1", "noise"] }
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+mime = "0.3.17"
 
 [profile.release]
 lto = true

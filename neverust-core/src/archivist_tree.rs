@@ -88,7 +88,8 @@ pub struct ArchivistProof {
     pub path: Vec<Vec<u8>>,
 }
 
-/// A proof node in a Merkle proof path (deprecated, use ArchivistProof instead)
+/// A proof node in a Merkle proof path
+#[deprecated = "use ArchivistProof instead"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofNode {
     /// The hash of the sibling node

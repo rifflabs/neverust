@@ -121,12 +121,12 @@ impl Advertiser {
 
         Self {
             discovery,
-            block_store: None,
             tx,
             rx: Arc::new(RwLock::new(rx)),
-            in_flight: Arc::new(RwLock::new(HashSet::new())),
             max_concurrent,
             readvertise_interval,
+            block_store: None,
+            in_flight: Arc::new(RwLock::new(HashSet::new())),
             task_handle: Arc::new(RwLock::new(None)),
             local_store_handle: Arc::new(RwLock::new(None)),
             running: Arc::new(RwLock::new(false)),
@@ -152,18 +152,19 @@ impl Advertiser {
     /// 1. Advertisement loop - processes queued blocks
     /// 2. Local store loop - periodically iterates all blocks in BlockStore (if set)
     pub async fn start(&self) -> Result<()> {
-        let mut running = self.running.write().await;
-        if *running {
-            return Err(AdvertiserError::AlreadyRunning);
+        {
+            let mut running = self.running.write().await;
+            if *running {
+                return Err(AdvertiserError::AlreadyRunning);
+            }
+
+            info!(
+                "Starting advertiser engine (max_concurrent={}, readvertise_interval={:?})",
+                self.max_concurrent, self.readvertise_interval
+            );
+
+            *running = true;
         }
-
-        info!(
-            "Starting advertiser engine (max_concurrent={}, readvertise_interval={:?})",
-            self.max_concurrent, self.readvertise_interval
-        );
-
-        *running = true;
-        drop(running);
 
         // Start advertisement loop
         let handle = self.spawn_advertise_loop();
@@ -183,14 +184,15 @@ impl Advertiser {
 
     /// Stop the advertiser engine
     pub async fn stop(&self) {
-        let mut running = self.running.write().await;
-        if !*running {
-            return;
-        }
+        { 
+            let mut running = self.running.write().await;
+            if !*running {
+                return;
+            }
 
-        info!("Stopping advertiser engine");
-        *running = false;
-        drop(running);
+            info!("Stopping advertiser engine");
+            *running = false;
+         }
 
         // Send stop message
         let _ = self.tx.send(AdvertiseMessage::Stop);

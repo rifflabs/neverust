@@ -221,32 +221,29 @@ impl PendingBlocksManager {
 
     /// Get all pending block CIDs
     pub fn get_pending_cids(&self) -> Vec<Cid> {
-        let state = self.state.lock().unwrap();
-        state.pending.keys().copied().collect()
+        self.state.lock().unwrap().pending.keys().copied().collect()
     }
 
     /// Get the number of pending blocks
     pub fn len(&self) -> usize {
-        let state = self.state.lock().unwrap();
-        state.pending.len()
+        self.state.lock().unwrap().pending.len()
     }
 
     /// Check if there are no pending blocks
     pub fn is_empty(&self) -> bool {
-        let state = self.state.lock().unwrap();
-        state.pending.is_empty()
+        self.state.lock().unwrap().pending.is_empty()
     }
 
     /// Get the number of retries remaining for a block
     pub fn retries_remaining(&self, cid: &Cid) -> Option<u32> {
-        let state = self.state.lock().unwrap();
-        state.pending.get(cid).map(|p| p.retries_left)
+        self.state.lock().unwrap().pending.get(cid).map(|p| p.retries_left)
     }
 
     /// Check if retries are exhausted for a block
     pub fn retries_exhausted(&self, cid: &Cid) -> bool {
-        let state = self.state.lock().unwrap();
-        state
+        self.state
+            .lock()
+            .unwrap()
             .pending
             .get(cid)
             .map(|p| p.retries_left == 0)
@@ -257,8 +254,7 @@ impl PendingBlocksManager {
     ///
     /// All waiters will receive channel errors.
     pub fn clear(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.pending.clear();
+        self.state.lock().unwrap().pending.clear();
         trace!("Cleared all pending blocks");
     }
 
@@ -266,9 +262,7 @@ impl PendingBlocksManager {
     ///
     /// The waiter will receive a channel error.
     pub fn cancel(&self, cid: &Cid) -> bool {
-        let mut state = self.state.lock().unwrap();
-
-        if state.pending.remove(cid).is_some() {
+        if self.state.lock().unwrap().pending.remove(cid).is_some() {
             trace!(cid = ?cid, "Cancelled pending block request");
             true
         } else {
