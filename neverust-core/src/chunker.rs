@@ -63,7 +63,6 @@ impl<R: AsyncRead + Unpin> Chunker<R> {
 
         Ok(Some(buffer))
     }
-
 }
 
 impl<R> Chunker<R> {

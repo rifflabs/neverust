@@ -227,7 +227,12 @@ impl Manifest {
             hcodec: self.hcodec as u32,
             version: self.version,
             filename: self.filename.clone().unwrap_or_default(),
-            mimetype: self.mimetype.as_ref().map(|mt| mt.essence_str().to_string()).unwrap_or_default().to_string(),
+            mimetype: self
+                .mimetype
+                .as_ref()
+                .map(|mt| mt.essence_str().to_string())
+                .unwrap_or_default()
+                .to_string(),
             ..Default::default()
         };
 

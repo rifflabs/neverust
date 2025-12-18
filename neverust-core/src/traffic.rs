@@ -134,13 +134,16 @@ async fn block_upload_loop_p2p(
                     "[TRAFFIC-P2P] Node {} failed to create block: {}",
                     config.node_id, e
                 );
-                continue
+                continue;
             }
         };
         let cid = block.cid;
         match block_store.put(block).await {
             Ok(_) => {
-                info!("[TRAFFIC-P2P] Node {} generated 1MiB block: {} - advertising to network", config.node_id, cid);
+                info!(
+                    "[TRAFFIC-P2P] Node {} generated 1MiB block: {} - advertising to network",
+                    config.node_id, cid
+                );
 
                 // Track this CID for P2P discovery
                 known_cids.write().await.insert(cid);

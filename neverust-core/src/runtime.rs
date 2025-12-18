@@ -37,12 +37,8 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     info!("Initialized metrics collector");
 
     // Create swarm first to get peer ID (pass metrics for P2P traffic tracking)
-    let (mut swarm, block_request_tx, keypair) = create_swarm(
-        block_store.clone(),
-        config.mode.clone(),
-        metrics.clone(),
-    )
-    .await?;
+    let (mut swarm, block_request_tx, keypair) =
+        create_swarm(block_store.clone(), config.mode.clone(), metrics.clone()).await?;
     let peer_id = swarm.local_peer_id().to_string();
 
     // Initialize BlockExc client for requesting blocks from peers (via channel to swarm)
@@ -275,7 +271,6 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         config.bootstrap_nodes.clone()
     };
 
-
     // Main event loop
     main_loop(swarm, listen_addrs, bootstrap_addrs, metrics).await;
 
@@ -286,7 +281,7 @@ async fn main_loop(
     mut swarm: Swarm<Behaviour>,
     listen_addrs: Arc<std::sync::RwLock<Vec<Multiaddr>>>,
     bootstrap_addrs: Vec<String>,
-    metrics: Metrics
+    metrics: Metrics,
 ) {
     // Track if we've established listen addresses
     let mut tcp_listening = false;

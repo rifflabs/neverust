@@ -184,7 +184,7 @@ impl Advertiser {
 
     /// Stop the advertiser engine
     pub async fn stop(&self) {
-        { 
+        {
             let mut running = self.running.write().await;
             if !*running {
                 return;
@@ -192,7 +192,7 @@ impl Advertiser {
 
             info!("Stopping advertiser engine");
             *running = false;
-         }
+        }
 
         // Send stop message
         let _ = self.tx.send(AdvertiseMessage::Stop);
