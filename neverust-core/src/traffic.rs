@@ -116,6 +116,10 @@ async fn block_upload_loop_p2p(
     let base_interval = Duration::from_secs(60) / config.upload_rate;
 
     loop {
+        // Add random jitter (0-50% of base interval)
+        let jitter_ms = rand::random::<u64>() % (base_interval.as_millis() as u64 / 2);
+        let jitter = Duration::from_millis(jitter_ms);
+        sleep(base_interval + jitter).await;
         // Generate random block data (1 MiB)
         let data: Vec<u8> = {
             let mut rng = rand::thread_rng();
@@ -123,41 +127,36 @@ async fn block_upload_loop_p2p(
         };
 
         // Create and store block
-        match Block::new(data) {
-            Ok(block) => {
-                let cid = block.cid;
-                match block_store.put(block).await {
-                    Ok(_) => {
-                        info!("[TRAFFIC-P2P] Node {} generated 1MiB block: {} - advertising to network", config.node_id, cid);
-
-                        // Track this CID for P2P discovery
-                        known_cids.write().await.insert(cid);
-
-                        // Advertise block availability via P2P
-                        if let Err(e) = p2p_tx.send(P2PCommand::AdvertiseBlock(cid)) {
-                            warn!("[TRAFFIC-P2P] Failed to advertise block {}: {}", cid, e);
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            "[TRAFFIC-P2P] Node {} failed to store block: {}",
-                            config.node_id, e
-                        );
-                    }
-                }
-            }
+        let block = match Block::new(data) {
+            Ok(block) => block,
             Err(e) => {
                 warn!(
                     "[TRAFFIC-P2P] Node {} failed to create block: {}",
                     config.node_id, e
                 );
+                continue
+            }
+        };
+        let cid = block.cid;
+        match block_store.put(block).await {
+            Ok(_) => {
+                info!("[TRAFFIC-P2P] Node {} generated 1MiB block: {} - advertising to network", config.node_id, cid);
+
+                // Track this CID for P2P discovery
+                known_cids.write().await.insert(cid);
+
+                // Advertise block availability via P2P
+                if let Err(e) = p2p_tx.send(P2PCommand::AdvertiseBlock(cid)) {
+                    warn!("[TRAFFIC-P2P] Failed to advertise block {}: {}", cid, e);
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[TRAFFIC-P2P] Node {} failed to store block: {}",
+                    config.node_id, e
+                );
             }
         }
-
-        // Add random jitter (0-50% of base interval)
-        let jitter_ms = rand::random::<u64>() % (base_interval.as_millis() as u64 / 2);
-        let jitter = Duration::from_millis(jitter_ms);
-        sleep(base_interval + jitter).await;
     }
 }
 
