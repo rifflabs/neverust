@@ -1,4 +1,5 @@
-//! RocksDB-backed persistent block storage
+//! RocksDB-backed persistent block storage.
+//! At time of writing, intent is to switch out for ReDB
 //!
 //! Provides CID-indexed block storage with BLAKE3 verification,
 //! persistent storage via RocksDB, and optimized configuration
