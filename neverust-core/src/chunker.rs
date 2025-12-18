@@ -64,6 +64,9 @@ impl<R: AsyncRead + Unpin> Chunker<R> {
         Ok(Some(buffer))
     }
 
+}
+
+impl<R> Chunker<R> {
     /// Get the configured chunk size
     pub fn chunk_size(&self) -> usize {
         self.chunk_size
