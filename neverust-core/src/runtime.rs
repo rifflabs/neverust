@@ -293,6 +293,11 @@ async fn main_loop(
     let mut bootstrapped = false;
     loop {
         tokio::select! {
+            biased; // Check for ctrl_c first
+            _ = signal::ctrl_c() => {
+                info!("Received Ctrl+C, shutting down...");
+                break;
+            },
             event = swarm.select_next_some() => {
                 match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
@@ -425,10 +430,6 @@ async fn main_loop(
                     }
                     _ => {}
                 }
-            }
-            _ = signal::ctrl_c() => {
-                info!("Received Ctrl+C, shutting down...");
-                break;
             }
         }
     }
