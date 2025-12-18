@@ -14,10 +14,10 @@ use crate::{
     metrics::Metrics,
     p2p::{create_swarm, P2PError},
     storage::BlockStore,
-    traffic,
+    traffic, Behaviour,
 };
 use futures::StreamExt;
-use libp2p::{swarm::SwarmEvent, Multiaddr};
+use libp2p::{swarm::SwarmEvent, Multiaddr, Swarm};
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -275,11 +275,22 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         config.bootstrap_nodes.clone()
     };
 
+
+    // Main event loop
+    main_loop(swarm, listen_addrs, bootstrap_addrs, metrics).await;
+
+    info!("Node stopped");
+    Ok(())
+}
+async fn main_loop(
+    mut swarm: Swarm<Behaviour>,
+    listen_addrs: Arc<std::sync::RwLock<Vec<Multiaddr>>>,
+    bootstrap_addrs: Vec<String>,
+    metrics: Metrics
+) {
     // Track if we've established listen addresses
     let mut tcp_listening = false;
     let mut bootstrapped = false;
-
-    // Main event loop
     loop {
         tokio::select! {
             event = swarm.select_next_some() => {
@@ -421,7 +432,4 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
             }
         }
     }
-
-    info!("Node stopped");
-    Ok(())
 }
