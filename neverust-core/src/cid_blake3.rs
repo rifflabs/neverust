@@ -54,6 +54,7 @@ pub fn blake3_cid(data: &[u8]) -> Result<Cid, CidError> {
 }
 
 /// Streaming SHA-256 verifier for blocks (Archivist-compatible)
+#[derive(Default)]
 pub struct StreamingVerifier {
     hasher: Sha256,
     expected_cid: Option<Cid>,
@@ -61,15 +62,6 @@ pub struct StreamingVerifier {
 }
 
 impl StreamingVerifier {
-    /// Create a new streaming verifier without expected CID
-    pub fn new() -> Self {
-        Self {
-            hasher: Sha256::new(),
-            expected_cid: None,
-            bytes_processed: 0,
-        }
-    }
-
     /// Create a new streaming verifier with expected CID
     pub fn new_with_cid(expected_cid: Cid) -> Self {
         Self {
@@ -131,12 +123,6 @@ impl StreamingVerifier {
     /// Get number of bytes processed
     pub fn bytes_processed(&self) -> usize {
         self.bytes_processed
-    }
-}
-
-impl Default for StreamingVerifier {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
