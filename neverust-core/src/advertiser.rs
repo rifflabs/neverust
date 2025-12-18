@@ -121,12 +121,12 @@ impl Advertiser {
 
         Self {
             discovery,
-            block_store: None,
             tx,
             rx: Arc::new(RwLock::new(rx)),
-            in_flight: Arc::new(RwLock::new(HashSet::new())),
             max_concurrent,
             readvertise_interval,
+            block_store: None,
+            in_flight: Arc::new(RwLock::new(HashSet::new())),
             task_handle: Arc::new(RwLock::new(None)),
             local_store_handle: Arc::new(RwLock::new(None)),
             running: Arc::new(RwLock::new(false)),
