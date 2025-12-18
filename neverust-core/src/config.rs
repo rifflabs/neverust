@@ -92,7 +92,7 @@ impl Default for Config {
             api_port: 8080,
             log_level: "info".to_string(),
             bootstrap_nodes: Vec::new(),
-            mode: BlockExcMode::MarketPlace { price_per_byte: 1 }
+            mode: BlockExcMode::MarketPlace { price_per_byte: 1 },
         }
     }
 }

@@ -236,7 +236,12 @@ impl PendingBlocksManager {
 
     /// Get the number of retries remaining for a block
     pub fn retries_remaining(&self, cid: &Cid) -> Option<u32> {
-        self.state.lock().unwrap().pending.get(cid).map(|p| p.retries_left)
+        self.state
+            .lock()
+            .unwrap()
+            .pending
+            .get(cid)
+            .map(|p| p.retries_left)
     }
 
     /// Check if retries are exhausted for a block

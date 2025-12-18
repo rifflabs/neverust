@@ -86,7 +86,9 @@ async fn write_length_prefixed<W: AsyncWriteExt + Unpin>(
 pub enum BlockExcMode {
     #[default]
     Altruistic,
-    MarketPlace{ price_per_byte: u64 },
+    MarketPlace {
+        price_per_byte: u64,
+    },
 }
 impl std::str::FromStr for BlockExcMode {
     type Err = &'static str;
@@ -95,17 +97,16 @@ impl std::str::FromStr for BlockExcMode {
         match s {
             "altruistic" => Ok(Self::Altruistic),
             "marketplace" => Ok(Self::MarketPlace { price_per_byte: 1 }),
-            _ => Err("unrecognised mode (options: 'altruistic', 'marketplace')")
+            _ => Err("unrecognised mode (options: 'altruistic', 'marketplace')"),
         }
     }
 }
-
 
 impl BlockExcMode {
     pub fn mode_string(&self) -> String {
         match self {
             Self::Altruistic => "altruistic".to_string(),
-            Self::MarketPlace { price_per_byte } => format!("Market @ {} per byte", price_per_byte)
+            Self::MarketPlace { price_per_byte } => format!("Market @ {} per byte", price_per_byte),
         }
     }
     fn price_per_byte(&self) -> Option<u64> {
@@ -115,7 +116,6 @@ impl BlockExcMode {
             None
         }
     }
-
 }
 /// BlockExc connection handler
 pub struct BlockExcHandler {
@@ -244,7 +244,11 @@ impl ConnectionHandler for BlockExcHandler {
                 let block_store = self.block_store.clone();
                 let mode = self.mode.clone();
                 let metrics = self.metrics.clone();
-                info!("BlockExc: Fully negotiated inbound stream from {} (mode: {})", peer_id, mode.mode_string());
+                info!(
+                    "BlockExc: Fully negotiated inbound stream from {} (mode: {})",
+                    peer_id,
+                    mode.mode_string()
+                );
 
                 // Spawn task to handle the stream - read messages from remote peer
                 tokio::spawn(async move {
@@ -364,7 +368,10 @@ impl ConnectionHandler for BlockExcHandler {
                                                         break;
                                                     }
                                                 }
-                                            } else if let BlockExcMode::MarketPlace { price_per_byte: _ } = mode {
+                                            } else if let BlockExcMode::MarketPlace {
+                                                price_per_byte: _,
+                                            } = mode
+                                            {
                                                 // MARKETPLACE MODE: Check payment before serving
                                                 info!("BlockExc: MARKETPLACE MODE - checking payment from {}", peer_id);
 
@@ -443,7 +450,10 @@ impl ConnectionHandler for BlockExcHandler {
                                                                 {
                                                                     let block_price =
                                                                         (block.data.len() as u64)
-                                                                            * mode.price_per_byte().unwrap_or_default();
+                                                                            * mode
+                                                                                .price_per_byte()
+                                                                                .unwrap_or_default(
+                                                                                );
                                                                     info!("BlockExc: Block {} available for {} units", cid, block_price);
 
                                                                     block_presences.push(
@@ -481,7 +491,7 @@ impl ConnectionHandler for BlockExcHandler {
                                                         }
                                                     }
                                                 }
-                                            } 
+                                            }
                                         }
                                     }
                                     Err(e) => {

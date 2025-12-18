@@ -76,10 +76,10 @@ async fn test_manifest_with_metadata() {
         tree_cid,
         DEFAULT_BLOCK_SIZE as u64,
         test_data.len() as u64,
-        Some(0xcd02),                   // codex-block codec
-        Some(0x12),                     // sha2-256 codec
-        Some(1),                        // version
-        None,                           // filename
+        Some(0xcd02),           // codex-block codec
+        Some(0x12),             // sha2-256 codec
+        Some(1),                // version
+        None,                   // filename
         Some(mime::TEXT_PLAIN), // mimetype
     );
 
@@ -145,7 +145,7 @@ async fn test_manifest_encoding_decoding() {
         Some(0xcd02),
         Some(0x12),
         Some(1),
-        None,                                         // filename
+        None,                                 // filename
         Some(mime::APPLICATION_OCTET_STREAM), // mimetype
     );
 

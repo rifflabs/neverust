@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
-use crate::blockexc::{BlockExcMode, BlockExcBehaviour };
+use crate::blockexc::{BlockExcBehaviour, BlockExcMode};
 use crate::identify_shim::{IdentifyBehaviour, IdentifyConfig};
 use crate::storage::BlockStore;
 
@@ -117,8 +117,7 @@ pub async fn create_swarm(
     let identify_behaviour = IdentifyBehaviour::new(identify_config);
 
     // Create behavior: BlockExc + Identify
-    let (blockexc_behaviour, block_request_tx) =
-        BlockExcBehaviour::new(block_store, mode, metrics);
+    let (blockexc_behaviour, block_request_tx) = BlockExcBehaviour::new(block_store, mode, metrics);
     let behaviour = Behaviour {
         blockexc: blockexc_behaviour,
         identify: identify_behaviour,
