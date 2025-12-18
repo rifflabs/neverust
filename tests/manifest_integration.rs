@@ -80,7 +80,7 @@ async fn test_manifest_with_metadata() {
         Some(0x12),                     // sha2-256 codec
         Some(1),                        // version
         None,                           // filename
-        Some("text/plain".to_string()), // mimetype
+        Some(mime::TEXT_PLAIN), // mimetype
     );
 
     assert_eq!(manifest.blocks_count(), 1);
@@ -146,7 +146,7 @@ async fn test_manifest_encoding_decoding() {
         Some(0x12),
         Some(1),
         None,                                         // filename
-        Some("application/octet-stream".to_string()), // mimetype
+        Some(mime::APPLICATION_OCTET_STREAM), // mimetype
     );
 
     // Encode

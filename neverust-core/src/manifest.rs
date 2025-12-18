@@ -4,6 +4,7 @@
 //! They are encoded using protobuf and stored as blocks in the network.
 
 use cid::Cid;
+use mime::Mime;
 use prost::Message as ProstMessage;
 use std::io::Cursor;
 use thiserror::Error;
@@ -115,7 +116,7 @@ pub struct Manifest {
     /// Original filename (optional)
     pub filename: Option<String>,
     /// MIME type (optional)
-    pub mimetype: Option<String>,
+    pub mimetype: Option<Mime>,
     /// Erasure coding information (if protected)
     pub erasure: Option<ErasureInfo>,
 }
@@ -131,7 +132,7 @@ impl Manifest {
         hcodec: Option<u64>,
         version: Option<u32>,
         filename: Option<String>,
-        mimetype: Option<String>,
+        mimetype: Option<Mime>,
     ) -> Self {
         Self {
             tree_cid,
@@ -161,7 +162,7 @@ impl Manifest {
         original_dataset_size: u64,
         protected_strategy: StrategyType,
         filename: Option<String>,
-        mimetype: Option<String>,
+        mimetype: Option<Mime>,
     ) -> Self {
         Self {
             tree_cid,
@@ -226,7 +227,7 @@ impl Manifest {
             hcodec: self.hcodec as u32,
             version: self.version,
             filename: self.filename.clone().unwrap_or_default(),
-            mimetype: self.mimetype.clone().unwrap_or_default(),
+            mimetype: self.mimetype.as_ref().map(|mt| mt.essence_str().to_string()).unwrap_or_default().to_string(),
             ..Default::default()
         };
 
@@ -340,11 +341,7 @@ impl Manifest {
             } else {
                 Some(header.filename)
             },
-            mimetype: if header.mimetype.is_empty() {
-                None
-            } else {
-                Some(header.mimetype)
-            },
+            mimetype: header.mimetype.parse().ok(),
             erasure,
         })
     }

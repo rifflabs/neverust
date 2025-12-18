@@ -35,6 +35,7 @@ bincode = "1.3"
 rocksdb = "0.22"
 num_cpus = "1.16"
 discv5 = "0.10"
+mime = "0.3.17"
 
 # High-performance transfer (TGP-style) via Citadel
 citadel-transfer = { git = "https://github.com/rifflabs/citadel.git", branch = "main" }
