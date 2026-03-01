@@ -38,3 +38,6 @@ crates/data/
 config.toml
 *.log
 .cargo-home/
+
+# Lean build/dependency artifacts
+proofs/lean/.lake/

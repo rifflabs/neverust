@@ -25,6 +25,22 @@ use crate::storage::{Block, BlockStore, StorageError};
 use libp2p::{identity::Keypair, Multiaddr};
 use std::sync::RwLock;
 
+fn upload_block_size() -> usize {
+    std::env::var("NEVERUST_UPLOAD_BLOCK_SIZE")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_BLOCK_SIZE)
+}
+
+fn upload_commit_batch_blocks() -> usize {
+    std::env::var("NEVERUST_UPLOAD_COMMIT_BATCH_BLOCKS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(256)
+}
+
 /// Convert CID to base58btc string (Archivist format with 'z' prefix)
 fn cid_to_string(cid: &Cid) -> String {
     cid.to_string_of_base(Base::Base58Btc)
@@ -627,14 +643,20 @@ async fn archivist_upload(State(state): State<ApiState>, body: Body) -> Result<S
     use bytes::BytesMut;
     use futures::StreamExt;
 
-    info!("Archivist API: Streaming upload started");
+    let block_size = upload_block_size();
+    let commit_batch_blocks = upload_commit_batch_blocks();
+    info!(
+        "Archivist API: Streaming upload started (block_size={}, commit_batch_blocks={})",
+        block_size, commit_batch_blocks
+    );
 
     // Stream chunks from the request body and store fixed-size blocks immediately.
     // This keeps memory bounded instead of buffering the full upload in RAM.
     let mut stream = body.into_data_stream();
-    let mut pending = BytesMut::with_capacity(DEFAULT_BLOCK_SIZE * 2);
+    let mut pending = BytesMut::with_capacity(block_size * 2);
     let mut dataset_size: u64 = 0;
     let mut block_cids = Vec::new();
+    let mut batch = Vec::with_capacity(commit_batch_blocks);
 
     while let Some(next) = stream.next().await {
         let chunk =
@@ -648,17 +670,20 @@ async fn archivist_upload(State(state): State<ApiState>, body: Body) -> Result<S
             .ok_or_else(|| ApiError::BadRequest("Upload too large".to_string()))?;
         pending.extend_from_slice(&chunk);
 
-        while pending.len() >= DEFAULT_BLOCK_SIZE {
-            let block_bytes = pending.split_to(DEFAULT_BLOCK_SIZE).to_vec();
+        while pending.len() >= block_size {
+            let block_bytes = pending.split_to(block_size).to_vec();
             let block = Block::new(block_bytes)
                 .map_err(|e| ApiError::Internal(format!("Failed to create block: {}", e)))?;
 
             block_cids.push(block.cid);
-            state
-                .block_store
-                .put(block)
-                .await
-                .map_err(|e| ApiError::Internal(format!("Failed to store block: {}", e)))?;
+            batch.push(block);
+            if batch.len() >= commit_batch_blocks {
+                state
+                    .block_store
+                    .put_many(std::mem::take(&mut batch))
+                    .await
+                    .map_err(|e| ApiError::Internal(format!("Failed to store block batch: {}", e)))?;
+            }
         }
     }
 
@@ -666,11 +691,15 @@ async fn archivist_upload(State(state): State<ApiState>, body: Body) -> Result<S
         let block = Block::new(pending.to_vec())
             .map_err(|e| ApiError::Internal(format!("Failed to create final block: {}", e)))?;
         block_cids.push(block.cid);
+        batch.push(block);
+    }
+
+    if !batch.is_empty() {
         state
             .block_store
-            .put(block)
+            .put_many(batch)
             .await
-            .map_err(|e| ApiError::Internal(format!("Failed to store final block: {}", e)))?;
+            .map_err(|e| ApiError::Internal(format!("Failed to store final block batch: {}", e)))?;
     }
 
     if dataset_size == 0 {
@@ -722,7 +751,7 @@ async fn archivist_upload(State(state): State<ApiState>, body: Body) -> Result<S
     // Format: "metadata:<cid>"
     let manifest = Manifest::new(
         tree_cid,
-        DEFAULT_BLOCK_SIZE as u64,
+        block_size as u64,
         dataset_size,
         None,                                            // codec (uses default 0xcd02)
         Some(BLAKE3_CODEC),                              // hcodec (BLAKE3)
