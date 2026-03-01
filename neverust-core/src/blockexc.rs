@@ -13,7 +13,7 @@ use libp2p::swarm::{
 use libp2p::PeerId;
 use std::io;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::metrics::Metrics;
 use crate::storage::BlockStore;
@@ -230,36 +230,12 @@ impl ConnectionHandler for BlockExcHandler {
                                 // Try to decode the message
                                 match decode_message(&data) {
                                     Ok(msg) => {
-                                        info!("BlockExc: Decoded message from {}: wantlist={}, blocks={}, presences={}",
+                                        debug!("BlockExc: Decoded message from {}: wantlist={}, blocks={}, presences={}",
                                             peer_id,
                                             msg.wantlist.is_some(),
                                             msg.payload.len(),
                                             msg.block_presences.len()
                                         );
-
-                                        // DEBUG: Log wantlist details
-                                        if let Some(ref wl) = msg.wantlist {
-                                            info!("BlockExc: Wantlist has {} entries, full={}", wl.entries.len(), wl.full);
-                                            for (i, entry) in wl.entries.iter().enumerate() {
-                                                info!("BlockExc:   Entry[{}]: address={}, priority={}, cancel={}, want_type={}, send_dont_have={}",
-                                                    i,
-                                                    entry.address.is_some(),
-                                                    entry.priority,
-                                                    entry.cancel,
-                                                    entry.want_type,
-                                                    entry.send_dont_have
-                                                );
-                                                if let Some(addr) = &entry.address {
-                                                    info!("BlockExc:   Entry[{}]: leaf={}, cid_len={}, tree_cid_len={}, index={}",
-                                                        i,
-                                                        addr.leaf,
-                                                        addr.cid.len(),
-                                                        addr.tree_cid.len(),
-                                                        addr.index
-                                                    );
-                                                }
-                                            }
-                                        }
 
                                         // If they sent a wantlist, respond with blocks we have
                                         if let Some(wantlist) = msg.wantlist {
@@ -273,9 +249,7 @@ impl ConnectionHandler for BlockExcHandler {
                                                 for entry in &wantlist.entries {
                                                     // Extract CID from BlockAddress
                                                     if let Some(cid_bytes) = entry.cid_bytes() {
-                                                        info!("BlockExc: Extracted CID bytes ({} bytes)", cid_bytes.len());
                                                         if let Ok(cid) = Cid::try_from(cid_bytes) {
-                                                            info!("BlockExc: Blackberry wants CID: {}", cid);
                                                             if let Ok(block) =
                                                                 block_store.get(&cid).await
                                                             {
@@ -295,13 +269,21 @@ impl ConnectionHandler for BlockExcHandler {
                                                                     )
                                                                 );
                                                             } else {
-                                                                warn!("BlockExc: Block {} NOT FOUND in local store", cid);
+                                                                debug!(
+                                                                    "BlockExc: Requested block {} not found locally",
+                                                                    cid
+                                                                );
                                                             }
                                                         } else {
-                                                            warn!("BlockExc: Failed to parse CID from {} bytes", cid_bytes.len());
+                                                            debug!(
+                                                                "BlockExc: Failed to parse CID from {} bytes",
+                                                                cid_bytes.len()
+                                                            );
                                                         }
                                                     } else {
-                                                        warn!("BlockExc: No CID bytes in wantlist entry");
+                                                        debug!(
+                                                            "BlockExc: Wantlist entry missing CID bytes"
+                                                        );
                                                     }
                                                 }
 

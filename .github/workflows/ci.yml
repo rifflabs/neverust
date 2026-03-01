@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cargo check
+        run: cargo check --workspace
+      - name: Core unit tests
+        run: cargo test -p neverust-core --lib
+      - name: Archivist parity smoke test
+        run: cargo test -p neverust-core --test archivist_parity_test

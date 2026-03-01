@@ -67,7 +67,9 @@ impl Discovery {
 
         // Try to create secp256k1 signing key from encoded bytes
         // For now, we'll generate a fresh key since libp2p keypair extraction is complex
-        warn!("Generating fresh secp256k1 key for DiscV5 (libp2p key extraction not yet implemented)");
+        warn!(
+            "Generating fresh secp256k1 key for DiscV5 (libp2p key extraction not yet implemented)"
+        );
         let secret_key = enr::k256::ecdsa::SigningKey::random(&mut rand::thread_rng());
 
         let peer_id = keypair.public().to_peer_id();
@@ -103,9 +105,7 @@ impl Discovery {
             ip: match listen_addr.ip() {
                 IpAddr::V4(ip) => ip,
                 IpAddr::V6(_) => {
-                    return Err(DiscoveryError::Discv5Error(
-                        "IPv6 not yet supported".into(),
-                    ))
+                    return Err(DiscoveryError::Discv5Error("IPv6 not yet supported".into()))
                 }
             },
             port: listen_addr.port(),
@@ -129,12 +129,10 @@ impl Discovery {
         // Add bootstrap peers
         for peer_str in bootstrap_peers {
             match peer_str.parse::<enr::Enr<enr::CombinedKey>>() {
-                Ok(bootstrap_enr) => {
-                    match discv5.add_enr(bootstrap_enr.clone()) {
-                        Ok(_) => info!("Added bootstrap peer: {}", bootstrap_enr.node_id()),
-                        Err(e) => warn!("Failed to add bootstrap peer: {}", e),
-                    }
-                }
+                Ok(bootstrap_enr) => match discv5.add_enr(bootstrap_enr.clone()) {
+                    Ok(_) => info!("Added bootstrap peer: {}", bootstrap_enr.node_id()),
+                    Err(e) => warn!("Failed to add bootstrap peer: {}", e),
+                },
                 Err(e) => warn!("Invalid bootstrap ENR {}: {}", peer_str, e),
             }
         }
@@ -217,15 +215,19 @@ impl Discovery {
     pub async fn run(self: Arc<Self>) {
         info!("Starting DiscV5 event loop");
 
-        let mut event_stream = self.discv5.event_stream().await.unwrap();
-
-        loop {
-            tokio::select! {
-                Some(event) = event_stream.recv() => {
-                    self.handle_event(event).await;
-                }
+        let mut event_stream = match self.discv5.event_stream().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                warn!("DiscV5 event stream failed to start: {}", e);
+                return;
             }
+        };
+
+        while let Some(event) = event_stream.recv().await {
+            self.handle_event(event).await;
         }
+
+        warn!("DiscV5 event stream ended");
     }
 
     /// Handle DiscV5 events
@@ -238,7 +240,11 @@ impl Discovery {
                 if let Some(Ok(peer_id_bytes)) = enr.get_decodable::<Vec<u8>>("libp2p") {
                     match PeerId::from_bytes(&peer_id_bytes) {
                         Ok(peer_id) => {
-                            info!("Discovered libp2p peer: {} (ENR: {})", peer_id, enr.node_id());
+                            info!(
+                                "Discovered libp2p peer: {} (ENR: {})",
+                                peer_id,
+                                enr.node_id()
+                            );
                         }
                         Err(e) => {
                             warn!("Invalid libp2p peer ID in ENR: {}", e);
@@ -254,7 +260,11 @@ impl Discovery {
                 }
             }
             Discv5Event::SessionEstablished(enr, socket_addr) => {
-                info!("Session established with {} at {}", enr.node_id(), socket_addr);
+                info!(
+                    "Session established with {} at {}",
+                    enr.node_id(),
+                    socket_addr
+                );
             }
             _ => {
                 // Other events (TalkRequest, etc.)

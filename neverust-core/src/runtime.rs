@@ -56,10 +56,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Initialize BoTG (Block-over-TGP) protocol for high-speed block exchange
     // Use disc_port + 1 for BoTG since DiscV5 uses disc_port (8090)
     let botg_port = config.disc_port + 1;
-    info!(
-        "Initializing BoTG protocol on UDP port {}",
-        botg_port
-    );
+    info!("Initializing BoTG protocol on UDP port {}", botg_port);
     let botg_config = BoTgConfig {
         local_peer_id: rand::random(), // Generate random peer ID for TGP
         epoch: 0,
@@ -95,7 +92,10 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         .parse()
         .map_err(|e| P2PError::Transport(format!("Invalid DiscV5 address: {}", e)))?;
 
-    info!("Initializing DiscV5 peer discovery on UDP port {}", config.disc_port);
+    info!(
+        "Initializing DiscV5 peer discovery on UDP port {}",
+        config.disc_port
+    );
 
     // Fetch bootstrap ENRs for DiscV5
     let bootstrap_enrs = Config::fetch_bootstrap_enrs()
@@ -105,38 +105,31 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     // Get announce addresses for this node (DiscV5 on disc_port, libp2p on listen_port)
     let announce_addrs = vec![
         format!("/ip4/0.0.0.0/tcp/{}", config.listen_port), // libp2p TCP
-        format!("/ip4/0.0.0.0/udp/{}", config.disc_port),  // DiscV5 UDP
+        format!("/ip4/0.0.0.0/udp/{}", config.disc_port),   // DiscV5 UDP
     ];
 
-    let discovery = match Discovery::new(&keypair, discv5_addr, announce_addrs, bootstrap_enrs).await {
-        Ok(disc) => {
-            info!("DiscV5 initialized successfully on {}", discv5_addr);
-            Arc::new(disc)
-        }
-        Err(e) => {
-            warn!("Failed to initialize DiscV5: {}. Continuing without peer discovery.", e);
-            warn!("This is expected if you're using secp256k1 keys - DiscV5 is optional.");
-            // Continue without DiscV5 - we can still use manual bootstrap nodes
-            // Return early to avoid starting the discovery event loop
-            // (We'll use a None/Option pattern in future iterations)
-            // For now, we just log and continue
-            info!("Continuing without DiscV5 peer discovery");
-            // Create a dummy Arc to satisfy the type system (won't be used)
-            // In future we'll make this Option<Arc<Discovery>>
-            Arc::new(Discovery::new(&keypair, discv5_addr, vec![], vec![]).await.unwrap_or_else(|_| {
-                panic!("Critical: Could not initialize DiscV5 even with empty config")
-            }))
-        }
-    };
+    let discovery =
+        match Discovery::new(&keypair, discv5_addr, announce_addrs, bootstrap_enrs).await {
+            Ok(disc) => {
+                info!("DiscV5 initialized successfully on {}", discv5_addr);
+                Some(Arc::new(disc))
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to initialize DiscV5: {}. Continuing without peer discovery.",
+                    e
+                );
+                None
+            }
+        };
 
-    // Start DiscV5 event loop in background
-    tokio::spawn({
-        let discovery = discovery.clone();
-        async move {
+    // Start DiscV5 event loop in background when discovery is available.
+    if let Some(discovery) = discovery {
+        tokio::spawn(async move {
             info!("Starting DiscV5 event loop");
             discovery.run().await;
-        }
-    });
+        });
+    }
 
     // Add peers to BoTG for P2P communication (Docker network autodiscovery)
     tokio::spawn({
@@ -192,8 +185,16 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
         let addr = format!("0.0.0.0:{}", api_port);
         info!("Starting REST API on {}", addr);
 
-        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-        axum::serve(listener, app).await.unwrap();
+        match tokio::net::TcpListener::bind(&addr).await {
+            Ok(listener) => {
+                if let Err(e) = axum::serve(listener, app).await {
+                    error!("REST API server failed: {}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to bind REST API listener on {}: {}", addr, e);
+            }
+        }
     });
 
     // Start autonomous traffic generator if enabled
@@ -269,7 +270,11 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                         }
 
                         // Add to listen addresses collection
-                        listen_addrs.write().unwrap().push(address.clone());
+                        if let Ok(mut addrs) = listen_addrs.write() {
+                            addrs.push(address.clone());
+                        } else {
+                            warn!("Failed to record listen address due to poisoned lock");
+                        }
 
                         // Once TCP is listening, dial bootstrap nodes
                         if tcp_listening && !bootstrapped {
