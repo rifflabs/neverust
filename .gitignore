@@ -37,3 +37,4 @@ crates/data/
 # Local configuration and logs
 config.toml
 *.log
+.cargo-home/
