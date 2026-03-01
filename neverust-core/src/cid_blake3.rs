@@ -5,13 +5,12 @@
 
 use cid::Cid;
 use multihash::Multihash;
-use sha2::{Digest, Sha256};
 use std::io::{self, Read};
 use thiserror::Error;
 
-/// SHA-256 multihash code (archivist uses sha2-256, not blake3)
+/// BLAKE3 multihash code
 /// See: https://github.com/multiformats/multicodec/blob/master/table.csv
-const SHA256_CODE: u64 = 0x12; // code for sha2-256
+const BLAKE3_CODE: u64 = 0x1e;
 
 /// Archivist block codec (codex-block, NOT codex-manifest!)
 /// 0xcd01 = codex-manifest (for metadata)
@@ -33,29 +32,27 @@ pub enum CidError {
     Multihash(String),
 }
 
-/// Compute SHA-256 hash of data (Archivist-compatible)
+/// Compute BLAKE3 hash of data
 pub fn blake3_hash(data: &[u8]) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    hasher.finalize().to_vec()
+    blake3::hash(data).as_bytes().to_vec()
 }
 
 /// Compute Archivist-compatible CID for data
-/// Uses SHA-256 hash and codex-block codec (0xcd02)
+/// Uses BLAKE3 hash and codex-block codec (0xcd02)
 pub fn blake3_cid(data: &[u8]) -> Result<Cid, CidError> {
     let hash = blake3_hash(data);
 
-    // Create multihash from SHA-256 hash
-    let mh = Multihash::wrap(SHA256_CODE, &hash)
+    // Create multihash from BLAKE3 hash
+    let mh = Multihash::wrap(BLAKE3_CODE, &hash)
         .map_err(|e| CidError::Multihash(format!("Failed to create multihash: {}", e)))?;
 
-    // Create CIDv1 with archivist-block codec (0xcd01)
+    // Create CIDv1 with archivist-block codec (0xcd02)
     Ok(Cid::new_v1(ARCHIVIST_BLOCK_CODEC, mh))
 }
 
-/// Streaming SHA-256 verifier for blocks (Archivist-compatible)
+/// Streaming BLAKE3 verifier for blocks
 pub struct StreamingVerifier {
-    hasher: Sha256,
+    hasher: blake3::Hasher,
     expected_cid: Option<Cid>,
     bytes_processed: usize,
 }
@@ -64,7 +61,7 @@ impl StreamingVerifier {
     /// Create a new streaming verifier without expected CID
     pub fn new() -> Self {
         Self {
-            hasher: Sha256::new(),
+            hasher: blake3::Hasher::new(),
             expected_cid: None,
             bytes_processed: 0,
         }
@@ -73,7 +70,7 @@ impl StreamingVerifier {
     /// Create a new streaming verifier with expected CID
     pub fn new_with_cid(expected_cid: Cid) -> Self {
         Self {
-            hasher: Sha256::new(),
+            hasher: blake3::Hasher::new(),
             expected_cid: Some(expected_cid),
             bytes_processed: 0,
         }
@@ -107,7 +104,7 @@ impl StreamingVerifier {
     pub fn finalize(self) -> Cid {
         let hash = self.hasher.finalize();
         let mh =
-            Multihash::wrap(SHA256_CODE, hash.as_slice()).expect("SHA-256 hash length is valid");
+            Multihash::wrap(BLAKE3_CODE, hash.as_bytes()).expect("BLAKE3 hash length is valid");
         Cid::new_v1(ARCHIVIST_BLOCK_CODEC, mh)
     }
 

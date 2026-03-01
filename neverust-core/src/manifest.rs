@@ -108,7 +108,7 @@ pub struct Manifest {
     pub dataset_size: u64,
     /// Dataset codec (default: BlockCodec = 0xcd02)
     pub codec: u64,
-    /// Multihash codec (default: SHA-256 = 0x12)
+    /// Multihash codec (default: BLAKE3 = 0x1e)
     pub hcodec: u64,
     /// CID version (default: 1)
     pub version: u32,
@@ -137,7 +137,7 @@ impl Manifest {
             block_size,
             dataset_size,
             codec: codec.unwrap_or(BLOCK_CODEC),
-            hcodec: hcodec.unwrap_or(SHA256_CODEC),
+            hcodec: hcodec.unwrap_or(BLAKE3_CODEC),
             version: version.unwrap_or(1),
             filename,
             mimetype,
@@ -360,23 +360,21 @@ impl Manifest {
 
         // Create CID with manifest codec
         // CID = <version><codec><multihash>
-        // Archivist uses SHA-256 for all CIDs (blocks AND manifests)
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(&data);
-        let hash_bytes = hasher.finalize();
+        // Build manifest CID using BLAKE3 multihash
+        let hash = blake3::hash(&data);
+        let hash_bytes = hash.as_bytes();
 
         // Build multihash: <hash_code><hash_length><hash_bytes>
         let mut multihash = Vec::new();
-        // SHA-256 codec (0x12) - Archivist compatibility
+        // BLAKE3 codec (0x1e)
         let mut buf = [0u8; 10];
-        let encoded = unsigned_varint::encode::u64(SHA256_CODEC, &mut buf);
+        let encoded = unsigned_varint::encode::u64(BLAKE3_CODEC, &mut buf);
         multihash.extend_from_slice(encoded);
         // Hash length (32 bytes)
         let encoded = unsigned_varint::encode::u64(32, &mut buf);
         multihash.extend_from_slice(encoded);
         // Hash bytes
-        multihash.extend_from_slice(&hash_bytes);
+        multihash.extend_from_slice(hash_bytes);
 
         // Build CID: <version><codec><multihash>
         let mut cid_bytes = Vec::new();
@@ -539,7 +537,7 @@ mod tests {
         assert_eq!(manifest.block_size, DEFAULT_BLOCK_SIZE);
         assert_eq!(manifest.dataset_size, 1024 * 1024);
         assert_eq!(manifest.codec, BLOCK_CODEC);
-        assert_eq!(manifest.hcodec, SHA256_CODEC);
+        assert_eq!(manifest.hcodec, BLAKE3_CODEC);
         assert_eq!(manifest.version, 1);
         assert_eq!(manifest.filename, Some("test.txt".to_string()));
         assert_eq!(manifest.mimetype, Some("text/plain".to_string()));

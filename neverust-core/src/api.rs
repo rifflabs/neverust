@@ -19,7 +19,7 @@ use tracing::{error, info};
 use crate::archivist_tree::ArchivistTree;
 use crate::botg::BoTgProtocol;
 use crate::chunker::DEFAULT_BLOCK_SIZE;
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, BLAKE3_CODEC};
 use crate::metrics::Metrics;
 use crate::storage::{Block, BlockStore, StorageError};
 use libp2p::{identity::Keypair, Multiaddr};
@@ -725,7 +725,7 @@ async fn archivist_upload(State(state): State<ApiState>, body: Body) -> Result<S
         DEFAULT_BLOCK_SIZE as u64,
         dataset_size,
         None,                                            // codec (uses default 0xcd02)
-        None,                                            // hcodec (uses default SHA-256)
+        Some(BLAKE3_CODEC),                              // hcodec (BLAKE3)
         None,                                            // version (uses default 1)
         Some(format!("metadata:{}", tree_metadata_cid)), // filename (stores metadata CID)
         None,                                            // mimetype
