@@ -156,7 +156,10 @@ pub fn create_router(
         .route("/api/archivist/v1/peerid", get(peer_id_endpoint))
         .route("/api/archivist/v1/stats", get(archivist_stats))
         .route("/api/archivist/v1/spr", get(spr_endpoint))
-        .route("/api/archivist/v1/connect/:peer_id", get(connect_not_supported))
+        .route(
+            "/api/archivist/v1/connect/:peer_id",
+            get(connect_not_supported),
+        )
         .route(
             "/api/archivist/v1/sales/slots",
             get(marketplace_persistence_disabled),
@@ -181,10 +184,7 @@ pub fn create_router(
             "/api/archivist/v1/storage/purchases/:id",
             get(marketplace_persistence_disabled),
         )
-        .route(
-            "/api/archivist/v1/debug/info",
-            get(debug_info_endpoint),
-        )
+        .route("/api/archivist/v1/debug/info", get(debug_info_endpoint))
         .route(
             "/api/archivist/v1/debug/chronicles/loglevel",
             post(loglevel_not_supported),
@@ -393,7 +393,11 @@ fn metadata_cid_from_manifest(manifest: &Manifest) -> Option<Cid> {
         .and_then(|s| s.parse().ok())
 }
 
-async fn retrieve_local_cid_data(state: &ApiState, cid: &Cid, cid_str: &str) -> Result<Vec<u8>, ApiError> {
+async fn retrieve_local_cid_data(
+    state: &ApiState,
+    cid: &Cid,
+    cid_str: &str,
+) -> Result<Vec<u8>, ApiError> {
     let block = state.block_store.get(cid).await.map_err(|e| match e {
         StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.to_string()),
         _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
@@ -408,15 +412,25 @@ async fn retrieve_local_cid_data(state: &ApiState, cid: &Cid, cid_str: &str) -> 
             ApiError::Internal("Manifest missing metadata CID in filename field".to_string())
         })?;
 
-        let tree_metadata_block = state.block_store.get(&metadata_cid).await.map_err(|e| match e {
-            StorageError::BlockNotFound(_) => {
-                ApiError::NotFound(format!("metadata for manifest {} not found", cid_str))
-            }
-            _ => ApiError::Internal(format!("Failed to fetch tree metadata {}: {}", metadata_cid, e)),
-        })?;
+        let tree_metadata_block =
+            state
+                .block_store
+                .get(&metadata_cid)
+                .await
+                .map_err(|e| match e {
+                    StorageError::BlockNotFound(_) => {
+                        ApiError::NotFound(format!("metadata for manifest {} not found", cid_str))
+                    }
+                    _ => ApiError::Internal(format!(
+                        "Failed to fetch tree metadata {}: {}",
+                        metadata_cid, e
+                    )),
+                })?;
 
-        let block_cids = ArchivistTree::deserialize_block_list(&tree_metadata_block.data)
-            .map_err(|e| ApiError::Internal(format!("Failed to deserialize tree metadata: {}", e)))?;
+        let block_cids =
+            ArchivistTree::deserialize_block_list(&tree_metadata_block.data).map_err(|e| {
+                ApiError::Internal(format!("Failed to deserialize tree metadata: {}", e))
+            })?;
 
         if block_cids.len() != manifest.blocks_count() {
             return Err(ApiError::Internal(format!(
@@ -428,12 +442,16 @@ async fn retrieve_local_cid_data(state: &ApiState, cid: &Cid, cid_str: &str) -> 
 
         let mut data: Vec<u8> = Vec::with_capacity(manifest.dataset_size as usize);
         for block_cid in &block_cids {
-            let b = state.block_store.get(block_cid).await.map_err(|e| match e {
-                StorageError::BlockNotFound(_) => {
-                    ApiError::NotFound(format!("manifest block {} not found", block_cid))
-                }
-                _ => ApiError::Internal(format!("Failed to fetch block {}: {}", block_cid, e)),
-            })?;
+            let b = state
+                .block_store
+                .get(block_cid)
+                .await
+                .map_err(|e| match e {
+                    StorageError::BlockNotFound(_) => {
+                        ApiError::NotFound(format!("manifest block {} not found", block_cid))
+                    }
+                    _ => ApiError::Internal(format!("Failed to fetch block {}: {}", block_cid, e)),
+                })?;
             data.extend_from_slice(&b.data);
         }
 
@@ -692,11 +710,11 @@ async fn archivist_upload(
         tree_cid,
         chunker.chunk_size() as u64,
         dataset_size as u64,
-        None, // codec (uses default 0xcd02)
-        None, // hcodec (uses default SHA-256)
-        None, // version (uses default 1)
+        None,                                            // codec (uses default 0xcd02)
+        None,                                            // hcodec (uses default SHA-256)
+        None,                                            // version (uses default 1)
         Some(format!("metadata:{}", tree_metadata_cid)), // filename (stores metadata CID)
-        None, // mimetype
+        None,                                            // mimetype
     );
 
     info!(
@@ -816,12 +834,20 @@ async fn archivist_download(
                                     // Avoid storing fetched bytes under manifest CID.
                                     if cid.codec() != 0xcd01 {
                                         let block = Block::new(data.to_vec()).map_err(|e| {
-                                            ApiError::Internal(format!("Failed to create block: {}", e))
+                                            ApiError::Internal(format!(
+                                                "Failed to create block: {}",
+                                                e
+                                            ))
                                         })?;
 
-                                        state.block_store.put(block.clone()).await.map_err(|e| {
-                                            ApiError::Internal(format!("Failed to store block: {}", e))
-                                        })?;
+                                        state.block_store.put(block.clone()).await.map_err(
+                                            |e| {
+                                                ApiError::Internal(format!(
+                                                    "Failed to store block: {}",
+                                                    e
+                                                ))
+                                            },
+                                        )?;
 
                                         return Ok(block.data);
                                     }

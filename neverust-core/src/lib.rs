@@ -29,8 +29,8 @@ pub use cid_blake3::{blake3_cid, blake3_hash, verify_blake3, CidError, Streaming
 pub use config::Config;
 pub use discovery::{Discovery, DiscoveryError, DiscoveryStats};
 pub use manifest::{
-    ErasureInfo, Manifest, ManifestError, StrategyType, VerificationInfo, BLOCK_CODEC,
-    BLAKE3_CODEC, MANIFEST_CODEC, SHA256_CODEC,
+    ErasureInfo, Manifest, ManifestError, StrategyType, VerificationInfo, BLAKE3_CODEC,
+    BLOCK_CODEC, MANIFEST_CODEC, SHA256_CODEC,
 };
 pub use metrics::Metrics;
 pub use p2p::{create_swarm, Behaviour, P2PError};

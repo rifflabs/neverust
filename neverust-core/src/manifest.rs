@@ -289,8 +289,9 @@ impl Manifest {
 
         // Parse erasure info if present
         let erasure = if let Some(erasure_info) = header.erasure {
-            let original_tree_cid = Cid::try_from(erasure_info.original_tree_cid)
-                .map_err(|e| ManifestError::CidError(format!("Invalid original tree CID: {}", e)))?;
+            let original_tree_cid = Cid::try_from(erasure_info.original_tree_cid).map_err(|e| {
+                ManifestError::CidError(format!("Invalid original tree CID: {}", e))
+            })?;
 
             // Parse verification info if present
             let verification = if let Some(verification_info) = erasure_info.verification {
@@ -302,8 +303,9 @@ impl Manifest {
                     .slot_roots
                     .iter()
                     .map(|bytes| {
-                        Cid::try_from(bytes.as_slice())
-                            .map_err(|e| ManifestError::CidError(format!("Invalid slot root: {}", e)))
+                        Cid::try_from(bytes.as_slice()).map_err(|e| {
+                            ManifestError::CidError(format!("Invalid slot root: {}", e))
+                        })
                     })
                     .collect();
 
@@ -583,7 +585,16 @@ mod tests {
     fn test_manifest_encode_decode_minimal() {
         let tree_cid = create_test_cid(b"minimal tree");
 
-        let manifest = Manifest::new(tree_cid, DEFAULT_BLOCK_SIZE, 512, None, None, None, None, None);
+        let manifest = Manifest::new(
+            tree_cid,
+            DEFAULT_BLOCK_SIZE,
+            512,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let encoded = manifest.encode().expect("Encode should succeed");
         let decoded = Manifest::decode(&encoded).expect("Decode should succeed");
@@ -625,7 +636,16 @@ mod tests {
     fn test_manifest_cid_computation() {
         let tree_cid = create_test_cid(b"test tree");
 
-        let manifest = Manifest::new(tree_cid, DEFAULT_BLOCK_SIZE, 1024, None, None, None, None, None);
+        let manifest = Manifest::new(
+            tree_cid,
+            DEFAULT_BLOCK_SIZE,
+            1024,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let block1 = manifest.to_block().expect("to_block should succeed");
         let block2 = manifest.to_block().expect("to_block should succeed");
@@ -634,7 +654,16 @@ mod tests {
         assert_eq!(block1.cid, block2.cid);
 
         // Different manifest should produce different CID
-        let manifest2 = Manifest::new(tree_cid, DEFAULT_BLOCK_SIZE, 2048, None, None, None, None, None);
+        let manifest2 = Manifest::new(
+            tree_cid,
+            DEFAULT_BLOCK_SIZE,
+            2048,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let block3 = manifest2.to_block().expect("to_block should succeed");
         assert_ne!(block1.cid, block3.cid);
     }
@@ -791,7 +820,10 @@ mod tests {
         assert_eq!(verification.slot_roots[1], slot_root_2);
         assert_eq!(verification.slot_roots[2], slot_root_3);
         assert_eq!(verification.cell_size, 2048);
-        assert_eq!(verification.verifiable_strategy, StrategyType::LinearStrategy);
+        assert_eq!(
+            verification.verifiable_strategy,
+            StrategyType::LinearStrategy
+        );
     }
 
     #[test]

@@ -276,7 +276,10 @@ impl BlockStore {
         .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))
         .and_then(|r| r)
         .unwrap_or_else(|e| {
-            warn!("Failed to compute store stats from {:?}: {}", self.db_path, e);
+            warn!(
+                "Failed to compute store stats from {:?}: {}",
+                self.db_path, e
+            );
             BlockStoreStats {
                 block_count: 0,
                 total_size: 0,
