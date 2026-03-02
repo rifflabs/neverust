@@ -1,0 +1,29 @@
+[Unit]
+Description=Neverust Node (production)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wings
+Group=wings
+WorkingDirectory=/opt/neverust
+ExecStart=/opt/neverust/target/release/neverust start \
+  --data-dir=/mnt/riffcastle/archivist/blockstores/neverust \
+  --listen-port=8070 \
+  --disc-port=8090 \
+  --api-port=8081 \
+  --log-level=info
+Environment=RUST_LOG=info
+Environment=NEVERUST_HTTP_FALLBACK_PEERS=http://127.0.0.1:9080
+Environment=BOOTSTRAP_NODE=127.0.0.1:9080
+Environment=BOOTSTRAP_P2P_PORT=9070
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

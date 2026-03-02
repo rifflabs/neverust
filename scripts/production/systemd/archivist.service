@@ -1,0 +1,29 @@
+[Unit]
+Description=Archivist Node (production)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wings
+Group=wings
+WorkingDirectory=/opt/archivist
+ExecStart=/opt/archivist/build/archivist \
+  --data-dir=/mnt/riffcastle/archivist/blockstores/archivist \
+  --listen-addrs=/ip4/0.0.0.0/tcp/9070 \
+  --disc-port=9090 \
+  --api-bindaddr=0.0.0.0 \
+  --api-port=9080 \
+  --log-level=info \
+  --repo-kind=fs \
+  --fs-fsync-file=true \
+  --fs-fsync-dir=true
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
