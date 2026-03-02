@@ -90,3 +90,33 @@ PREFLIGHT_STATUS=PASS
   - `FS_FSYNC_DIR=true`
 - Use a dedicated data root per testnet deployment to avoid accidental overlap.
 
+
+## 7) Host-Specific Garage Rollout (10.7.1.200)
+
+Prebaked env profile:
+
+- `scripts/production/eth2077/archivist-eth2077.10-7-1-200.env`
+
+One-command rollout + gate check:
+
+```bash
+cd /mnt/riffcastle/castle/workspace/neverust
+./scripts/production/eth2077/rollout_archivist_eth2077_10_7_1_200.sh
+```
+
+This sequence runs:
+
+1. Shell syntax gate for setup/preflight scripts.
+2. Setup/install flow.
+3. Service restart (`START_AFTER_SETUP=true`).
+4. Preflight canary gate.
+5. Local API smoke checks.
+6. TLS host checks for:
+   - `archivist.riff.cc`
+   - `neverust.riff.cc`
+   - `archcluster.riff.cc`
+   - `2077.riff.cc`
+   - `explorer.riff.cc`
+   - `wallet.riff.cc`
+   - `market.riff.cc`
+   - `rpc.riff.cc`
