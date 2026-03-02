@@ -43,7 +43,17 @@ if [[ ! -d "$ARCHIVIST_NODE_FFI_ROOT" ]]; then
   echo "ERROR: ARCHIVIST_NODE_FFI_ROOT does not exist: $ARCHIVIST_NODE_FFI_ROOT" >&2
   exit 1
 fi
-mkdir -p "$TMPDIR"
+mkdir -p "$TMPDIR" || true
+tmp_probe=""
+if [[ -d "$TMPDIR" ]]; then
+  tmp_probe="$(mktemp -p "$TMPDIR" suite-probe.XXXXXX 2>/dev/null || true)"
+fi
+if [[ -z "$tmp_probe" ]]; then
+  TMPDIR="$ROOT_DIR/.tmp/tmp"
+  mkdir -p "$TMPDIR"
+else
+  rm -f "$tmp_probe"
+fi
 mkdir -p "$NIMBLE_DIR"
 mkdir -p "$CARGO_HOME"
 mkdir -p "$CARGO_TARGET_DIR"
