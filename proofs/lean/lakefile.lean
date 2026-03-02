@@ -12,5 +12,6 @@ lean_lib NeverustProofs where
     `NeverustProofs.ProbeAllocation,
     `NeverustProofs.StripeClasses,
     `NeverustProofs.GeometryTransfer,
-    `NeverustProofs.Defederation
+    `NeverustProofs.Defederation,
+    `NeverustProofs.DeploymentSafety
   ]
