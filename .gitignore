@@ -41,3 +41,8 @@ config.toml
 
 # Lean build/dependency artifacts
 proofs/lean/.lake/
+
+# Local large/generated research artifacts
+.bench/
+.ffi/
+.tmp/
