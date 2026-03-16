@@ -11,6 +11,7 @@ use crate::{
     citadel_sync::{configured_citadel_mesh_sync, spawn_citadel_mesh_sync},
     config::Config,
     discovery::Discovery,
+    marketplace::{MarketplaceRuntimeInfo, MarketplaceStore},
     metrics::Metrics,
     p2p::{create_swarm, P2PError},
     storage::BlockStore,
@@ -71,8 +72,7 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
             base_pow_bits: config.citadel_pow_bits,
             trusted_pow_bits: config.citadel_trusted_pow_bits,
             max_ops_per_origin_per_round: config.citadel_max_ops_per_origin_per_round,
-            max_new_origins_per_host_per_round: config
-                .citadel_max_new_origins_per_host_per_round,
+            max_new_origins_per_host_per_round: config.citadel_max_new_origins_per_host_per_round,
             max_pending_per_origin: 512,
         };
         let node_id = if config.citadel_node_id == 0 {
@@ -97,10 +97,16 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
                     for site in snapshot.bootstrap_sites {
                         node.emit_local_follow(site, true);
                     }
-                    info!("Citadel: loaded initial flagship trust snapshot from {}", url);
+                    info!(
+                        "Citadel: loaded initial flagship trust snapshot from {}",
+                        url
+                    );
                 }
                 Err(e) => {
-                    warn!("Citadel: failed to load flagship trust snapshot {}: {}", url, e);
+                    warn!(
+                        "Citadel: failed to load flagship trust snapshot {}: {}",
+                        url, e
+                    );
                 }
             }
         }
@@ -276,8 +282,32 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     let api_listen_addrs = listen_addrs.clone();
     let api_port = config.api_port;
     let api_citadel = citadel_node.clone();
+    let api_marketplace = if config.persistence {
+        Some(
+            MarketplaceStore::open(config.data_dir.join("marketplace.json"))
+                .await
+                .map_err(|e| {
+                    P2PError::Swarm(format!("Failed to open marketplace state store: {}", e))
+                })?,
+        )
+    } else {
+        None
+    };
+    let api_marketplace_info = MarketplaceRuntimeInfo {
+        persistence_enabled: config.persistence,
+        quota_max_bytes: config.quota_bytes as usize,
+        eth_provider: config.eth_provider.clone(),
+        eth_account: config.eth_account.clone(),
+        marketplace_address: config.marketplace_address.clone(),
+        contracts_addresses: config
+            .contracts_addresses
+            .as_ref()
+            .and_then(|raw| serde_json::from_str(raw).ok()),
+        validator: config.validator,
+        prover: config.prover,
+    };
     tokio::spawn(async move {
-        let app = api::create_router_with_citadel(
+        let app = api::create_router_with_runtime(
             api_block_store,
             api_metrics,
             api_peer_id,
@@ -285,6 +315,8 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
             api_keypair,
             api_listen_addrs,
             api_citadel,
+            api_marketplace,
+            api_marketplace_info,
         );
         let addr = format!("0.0.0.0:{}", api_port);
         info!("Starting REST API on {}", addr);

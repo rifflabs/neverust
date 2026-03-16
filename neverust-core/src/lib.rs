@@ -8,15 +8,16 @@ pub mod archivist_tree;
 pub mod blockexc;
 pub mod botg;
 pub mod chunker;
-pub mod cluster;
+pub mod cid_blake3;
 pub mod citadel;
 pub mod citadel_sync;
-pub mod cid_blake3;
+pub mod cluster;
 pub mod config;
 pub mod discovery;
 pub mod identify_shim;
 pub mod identify_spr;
 pub mod manifest;
+pub mod marketplace;
 pub mod messages;
 pub mod metrics;
 pub mod p2p;
@@ -28,22 +29,29 @@ pub mod spr;
 pub mod storage;
 pub mod traffic;
 
+pub use archivist_cluster::{
+    ArchivistCluster, ClusterError, ClusterMember, MemberBackend, PinOutcome,
+};
 pub use archivist_tree::{ArchivistProof, ArchivistTree, ProofNode};
-pub use archivist_cluster::{ArchivistCluster, ClusterError, ClusterMember, MemberBackend, PinOutcome};
 pub use botg::{BlockId, BlockRollup, BoTgConfig, BoTgError, BoTgProtocol};
 pub use chunker::{Chunker, DEFAULT_BLOCK_SIZE};
-pub use cluster::{select_replicas, upload_path_for_cid_str, ClusterNode};
+pub use cid_blake3::{blake3_cid, blake3_hash, verify_blake3, CidError, StreamingVerifier};
 pub use citadel::{
     fetch_flagship_trust_snapshot, run_defederation_simulation, DefederationGuardConfig,
     DefederationNode, DefederationSimulationConfig, DefederationSimulationResult,
     FlagshipTrustSnapshot, IdleBandwidthGateConfig, LensGraph, LensOp, LensOpKind,
 };
-pub use cid_blake3::{blake3_cid, blake3_hash, verify_blake3, CidError, StreamingVerifier};
+pub use cluster::{select_replicas, upload_path_for_cid_str, ClusterNode};
 pub use config::Config;
 pub use discovery::{Discovery, DiscoveryError, DiscoveryStats};
 pub use manifest::{
     ErasureInfo, Manifest, ManifestError, StrategyType, VerificationInfo, BLAKE3_CODEC,
     BLOCK_CODEC, MANIFEST_CODEC, SHA256_CODEC,
+};
+pub use marketplace::{
+    ActiveSlotResponse, MarketplaceRuntimeInfo, MarketplaceStore, PurchaseRecord, PurchaseResponse,
+    PurchaseState, SaleAvailabilityInput, SaleAvailabilityRecord, SalesSlotRecord,
+    SalesSlotResponse, SalesSlotState, StorageRequestInput,
 };
 pub use metrics::Metrics;
 pub use p2p::{create_swarm, Behaviour, P2PError};
