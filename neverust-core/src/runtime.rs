@@ -385,7 +385,32 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
             .await
             .map_err(|e| P2PError::Transport(format!("Failed to fetch bootstrap nodes: {}", e)))?
     } else {
-        config.bootstrap_nodes.clone()
+        // Resolve any SPR-formatted bootstrap nodes into multiaddrs
+        let mut resolved = Vec::new();
+        for node in &config.bootstrap_nodes {
+            if node.starts_with("spr:") {
+                match crate::spr::parse_spr_records(node) {
+                    Ok(records) => {
+                        for (peer_id, addrs) in records {
+                            for addr in addrs {
+                                let addr_str = addr.to_string();
+                                // SPR contains UDP discovery addresses — convert to TCP
+                                let tcp_addr = addr_str.replace("/udp/", "/tcp/");
+                                let full_addr = format!("{}/p2p/{}", tcp_addr, peer_id);
+                                info!("Resolved SPR bootstrap: {}", full_addr);
+                                resolved.push(full_addr);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse SPR bootstrap node: {}", e);
+                    }
+                }
+            } else {
+                resolved.push(node.clone());
+            }
+        }
+        resolved
     };
 
     // Track if we've established listen addresses
