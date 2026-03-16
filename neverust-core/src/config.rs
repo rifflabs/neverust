@@ -61,6 +61,42 @@ pub struct StartCommand {
     #[arg(long, default_value_t = 1)]
     pub price_per_byte: u64,
 
+    /// Enable marketplace persistence and stateful API flows.
+    #[arg(long)]
+    pub persistence: bool,
+
+    /// Maximum local storage quota exposed through the Archivist-compatible API.
+    #[arg(long, default_value_t = 1024 * 1024 * 1024)]
+    pub quota_bytes: u64,
+
+    /// Ethereum RPC endpoint used for marketplace integration.
+    #[arg(long)]
+    pub eth_provider: Option<String>,
+
+    /// Explicit Ethereum account/address for the node.
+    #[arg(long)]
+    pub eth_account: Option<String>,
+
+    /// Path to the Ethereum private key file.
+    #[arg(long)]
+    pub eth_private_key: Option<PathBuf>,
+
+    /// Marketplace contract address.
+    #[arg(long)]
+    pub marketplace_address: Option<String>,
+
+    /// Contracts map as JSON, matching Archivist CLI usage.
+    #[arg(long)]
+    pub contracts_addresses: Option<String>,
+
+    /// Enable validator-side marketplace behavior.
+    #[arg(long)]
+    pub validator: bool,
+
+    /// Enable prover-side marketplace behavior.
+    #[arg(long)]
+    pub prover: bool,
+
     /// Logging level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     pub log_level: String,
@@ -126,6 +162,24 @@ pub struct Config {
     pub mode: String,
     pub price_per_byte: u64,
     #[serde(default)]
+    pub persistence: bool,
+    #[serde(default = "default_quota_bytes")]
+    pub quota_bytes: u64,
+    #[serde(default)]
+    pub eth_provider: Option<String>,
+    #[serde(default)]
+    pub eth_account: Option<String>,
+    #[serde(default)]
+    pub eth_private_key: Option<PathBuf>,
+    #[serde(default)]
+    pub marketplace_address: Option<String>,
+    #[serde(default)]
+    pub contracts_addresses: Option<String>,
+    #[serde(default)]
+    pub validator: bool,
+    #[serde(default)]
+    pub prover: bool,
+    #[serde(default)]
     pub citadel_mode: bool,
     #[serde(default = "default_citadel_site_id")]
     pub citadel_site_id: u64,
@@ -151,6 +205,10 @@ pub struct Config {
 
 fn default_citadel_site_id() -> u64 {
     1
+}
+
+fn default_quota_bytes() -> u64 {
+    1024 * 1024 * 1024
 }
 
 fn default_citadel_idle_bandwidth_kib() -> u64 {
@@ -184,6 +242,15 @@ impl Default for Config {
             bootstrap_nodes: Vec::new(),
             mode: "altruistic".to_string(),
             price_per_byte: 1,
+            persistence: false,
+            quota_bytes: default_quota_bytes(),
+            eth_provider: None,
+            eth_account: None,
+            eth_private_key: None,
+            marketplace_address: None,
+            contracts_addresses: None,
+            validator: false,
+            prover: false,
             citadel_mode: false,
             citadel_site_id: 1,
             citadel_node_id: 0,
@@ -254,13 +321,11 @@ impl Config {
                             Ok(body) => {
                                 let body = body.trim();
                                 let peer_id = if body.starts_with('{') {
-                                    serde_json::from_str::<Value>(body)
-                                        .ok()
-                                        .and_then(|v| {
-                                            v.get("id")
-                                                .and_then(|id| id.as_str())
-                                                .map(|id| id.to_string())
-                                        })
+                                    serde_json::from_str::<Value>(body).ok().and_then(|v| {
+                                        v.get("id")
+                                            .and_then(|id| id.as_str())
+                                            .map(|id| id.to_string())
+                                    })
                                 } else {
                                     Some(body.trim_matches('"').to_string())
                                 };
@@ -296,13 +361,7 @@ impl Config {
                         .ok()
                         .and_then(|v| v.parse::<u16>().ok())
                         .or_else(|| {
-                            api_port.and_then(|port| {
-                                if port > 10 {
-                                    Some(port - 10)
-                                } else {
-                                    None
-                                }
-                            })
+                            api_port.and_then(|port| if port > 10 { Some(port - 10) } else { None })
                         })
                         .unwrap_or(8070);
                     // Resolve hostname to IP if needed
@@ -414,6 +473,15 @@ impl From<StartCommand> for Config {
             bootstrap_nodes: cmd.bootstrap_node,
             mode: cmd.mode,
             price_per_byte: cmd.price_per_byte,
+            persistence: cmd.persistence,
+            quota_bytes: cmd.quota_bytes,
+            eth_provider: cmd.eth_provider,
+            eth_account: cmd.eth_account,
+            eth_private_key: cmd.eth_private_key,
+            marketplace_address: cmd.marketplace_address,
+            contracts_addresses: cmd.contracts_addresses,
+            validator: cmd.validator,
+            prover: cmd.prover,
             citadel_mode: cmd.citadel_mode,
             citadel_site_id: cmd.citadel_site_id,
             citadel_node_id: cmd.citadel_node_id,
@@ -454,6 +522,15 @@ mod tests {
             api_port: 9002,
             mode: "marketplace".to_string(),
             price_per_byte: 100,
+            persistence: true,
+            quota_bytes: 123456,
+            eth_provider: Some("https://rpc.example".to_string()),
+            eth_account: Some("0xabc".to_string()),
+            eth_private_key: Some(PathBuf::from("/tmp/key")),
+            marketplace_address: Some("0xdef".to_string()),
+            contracts_addresses: Some("{\"Marketplace\":\"0xdef\"}".to_string()),
+            validator: true,
+            prover: true,
             log_level: "debug".to_string(),
             bootstrap_node: vec!["/ip4/1.2.3.4/tcp/8070/p2p/12D3KooTest".to_string()],
             citadel_mode: true,
@@ -476,6 +553,13 @@ mod tests {
         assert_eq!(config.api_port, 9002);
         assert_eq!(config.mode, "marketplace");
         assert_eq!(config.price_per_byte, 100);
+        assert!(config.persistence);
+        assert_eq!(config.quota_bytes, 123456);
+        assert_eq!(config.eth_provider.as_deref(), Some("https://rpc.example"));
+        assert_eq!(config.eth_account.as_deref(), Some("0xabc"));
+        assert_eq!(config.marketplace_address.as_deref(), Some("0xdef"));
+        assert!(config.validator);
+        assert!(config.prover);
         assert_eq!(config.log_level, "debug");
         assert_eq!(config.bootstrap_nodes.len(), 1);
         assert!(config.citadel_mode);
