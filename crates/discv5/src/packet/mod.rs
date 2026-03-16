@@ -11,10 +11,10 @@
 
 use crate::{error::PacketError, Enr};
 use aes::cipher::{generic_array::GenericArray, KeyIvInit, StreamCipher};
+use alloy_rlp::Decodable;
 
 type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 
-use alloy_rlp::Decodable;
 use enr::NodeId;
 use rand::Rng;
 use std::convert::TryInto;
@@ -260,11 +260,26 @@ impl PacketKind {
                 let id_nonce_sig = remaining_data[0..sig_size].to_vec();
                 let ephem_pubkey = remaining_data[sig_size..total_size].to_vec();
 
+                // Try to decode the node record as RLP-encoded ENR. If
+                // decoding fails (e.g. because the remote sent an SPR /
+                // SignedPeerRecord in protobuf format, as Archivist DHT
+                // nodes do), gracefully skip the record instead of
+                // rejecting the handshake. The session key is derived from
+                // the ephemeral key exchange regardless.
                 let enr_record = if remaining_data.len() > total_size {
-                    Some(
-                        <Enr>::decode(&mut &remaining_data[total_size..])
-                            .map_err(PacketError::InvalidEnr)?,
-                    )
+                    match <Enr>::decode(&mut &remaining_data[total_size..]) {
+                        Ok(enr) => Some(enr),
+                        Err(e) => {
+                            let record_bytes = remaining_data.len() - total_size;
+                            tracing::debug!(
+                                bytes = record_bytes,
+                                error = %e,
+                                "Failed to decode node record as ENR in handshake \
+                                 (remote may use SPR format), skipping",
+                            );
+                            None
+                        }
+                    }
                 } else {
                     None
                 };
