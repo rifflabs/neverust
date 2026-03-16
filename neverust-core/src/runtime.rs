@@ -237,35 +237,32 @@ pub async fn run_node(config: Config) -> Result<(), P2PError> {
     }
 
     // Add peers to BoTG for P2P communication (Docker network autodiscovery)
-    tokio::spawn({
-        let botg = botg.clone();
-        async move {
-            // Wait for nodes to start
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    // Only enabled when NEVERUST_BOTG_DOCKER=1 (not used on devnet)
+    if std::env::var("NEVERUST_BOTG_DOCKER").unwrap_or_default() == "1" {
+        tokio::spawn({
+            let botg = botg.clone();
+            async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-            // Generate all 50 Docker network peers
-            let mut docker_peers = vec![
-                "172.25.0.10:8090".to_string(), // bootstrap
-            ];
-
-            // Add node1-49 (172.25.1.2 through 172.25.1.50)
-            for i in 1..=49 {
-                docker_peers.push(format!("172.25.1.{}:8090", i + 1));
-            }
-
-            let mut added = 0;
-            for peer_str in &docker_peers {
-                if let Ok(peer_addr) = peer_str.parse() {
-                    botg.add_peer(peer_addr).await;
-                    added += 1;
+                let mut docker_peers = vec!["172.25.0.10:8090".to_string()];
+                for i in 1..=49 {
+                    docker_peers.push(format!("172.25.1.{}:8090", i + 1));
                 }
+
+                let mut added = 0;
+                for peer_str in &docker_peers {
+                    if let Ok(peer_addr) = peer_str.parse() {
+                        botg.add_peer(peer_addr).await;
+                        added += 1;
+                    }
+                }
+                info!(
+                    "BoTG: Added {} Docker network peers for P2P communication",
+                    added
+                );
             }
-            info!(
-                "BoTG: Added {} Docker network peers for P2P communication",
-                added
-            );
-        }
-    });
+        });
+    }
 
     // Prepare listen addresses collection (will be populated as we receive NewListenAddr events)
     let listen_addrs = Arc::new(std::sync::RwLock::new(Vec::new()));

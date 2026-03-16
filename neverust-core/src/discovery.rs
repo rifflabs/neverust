@@ -451,19 +451,42 @@ async fn bootstrap_from_spr(
         Err(e) => warn!("Failed to add SPR bootstrap to routing table: {}", e),
     }
 
-    // Trigger a find_node to populate the routing table from the bootstrap peer
+    // Find nodes close to ourselves — this populates our routing table
+    // with the bootstrap node's neighbors.
     let discv5_clone = discv5.clone();
+    let our_node_id = discv5.local_enr().node_id();
     tokio::spawn(async move {
-        match discv5_clone.find_node(node_id).await {
+        // First find our own neighborhood (distance 0-256 from us)
+        match discv5_clone.find_node(our_node_id).await {
             Ok(nodes) => {
                 info!(
-                    "DHT bootstrap find_node returned {} peers from {}",
+                    "DHT bootstrap: discovered {} peers in our neighborhood from {}",
                     nodes.len(),
                     socket_addr
                 );
             }
             Err(e) => {
-                debug!("DHT bootstrap find_node to {} failed: {}", socket_addr, e);
+                debug!(
+                    "DHT bootstrap find_node (self) to {} failed: {}",
+                    socket_addr, e
+                );
+            }
+        }
+        // Then find nodes close to the bootstrap node to populate more of the table
+        match discv5_clone.find_node(node_id).await {
+            Ok(nodes) => {
+                info!(
+                    "DHT bootstrap: discovered {} peers near bootstrap {} from {}",
+                    nodes.len(),
+                    node_id,
+                    socket_addr
+                );
+            }
+            Err(e) => {
+                debug!(
+                    "DHT bootstrap find_node (target) to {} failed: {}",
+                    socket_addr, e
+                );
             }
         }
     });
