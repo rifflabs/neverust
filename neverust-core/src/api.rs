@@ -26,6 +26,10 @@ use crate::citadel::{
     DefederationSimulationConfig,
 };
 use crate::manifest::{Manifest, SHA256_CODEC};
+use crate::marketplace::{
+    ActiveSlotResponse, MarketplaceRuntimeInfo, MarketplaceStore, PurchaseResponse,
+    SaleAvailabilityInput, SalesSlotResponse, StorageRequestInput,
+};
 use crate::metrics::Metrics;
 use crate::storage::{Block, BlockStore, StorageError};
 use libp2p::{identity::Keypair, Multiaddr};
@@ -264,6 +268,8 @@ pub struct ApiState {
     pub fallback_http_client: reqwest::Client,
     pub ipfs_cluster_pins: Arc<AsyncRwLock<HashMap<String, IpfsClusterPinRecord>>>,
     pub citadel_node: Option<Arc<AsyncRwLock<DefederationNode>>>,
+    pub marketplace: Option<MarketplaceStore>,
+    pub marketplace_runtime: MarketplaceRuntimeInfo,
 }
 
 /// Response for storing a block
@@ -391,7 +397,7 @@ pub fn create_router(
     keypair: Arc<Keypair>,
     listen_addrs: Arc<RwLock<Vec<Multiaddr>>>,
 ) -> Router {
-    create_router_with_citadel(
+    create_router_with_runtime(
         block_store,
         metrics,
         peer_id,
@@ -399,6 +405,8 @@ pub fn create_router(
         keypair,
         listen_addrs,
         None,
+        None,
+        MarketplaceRuntimeInfo::default(),
     )
 }
 
@@ -411,6 +419,31 @@ pub fn create_router_with_citadel(
     keypair: Arc<Keypair>,
     listen_addrs: Arc<RwLock<Vec<Multiaddr>>>,
     citadel_node: Option<Arc<AsyncRwLock<DefederationNode>>>,
+) -> Router {
+    create_router_with_runtime(
+        block_store,
+        metrics,
+        peer_id,
+        botg,
+        keypair,
+        listen_addrs,
+        citadel_node,
+        None,
+        MarketplaceRuntimeInfo::default(),
+    )
+}
+
+/// Create the REST API router with optional Citadel and marketplace state.
+pub fn create_router_with_runtime(
+    block_store: Arc<BlockStore>,
+    metrics: Metrics,
+    peer_id: String,
+    botg: Arc<BoTgProtocol>,
+    keypair: Arc<Keypair>,
+    listen_addrs: Arc<RwLock<Vec<Multiaddr>>>,
+    citadel_node: Option<Arc<AsyncRwLock<DefederationNode>>>,
+    marketplace: Option<MarketplaceStore>,
+    marketplace_runtime: MarketplaceRuntimeInfo,
 ) -> Router {
     let fallback_http_peers = Arc::new(fallback_http_peer_urls());
     let fallback_http_client = reqwest::Client::builder()
@@ -429,6 +462,8 @@ pub fn create_router_with_citadel(
         fallback_http_client,
         ipfs_cluster_pins: Arc::new(AsyncRwLock::new(HashMap::new())),
         citadel_node,
+        marketplace,
+        marketplace_runtime,
     };
 
     Router::new()
@@ -449,10 +484,7 @@ pub fn create_router_with_citadel(
             "/api/archivist/v1/data/{cid}",
             get(archivist_download_local).delete(archivist_delete),
         )
-        .route(
-            "/api/archivist/v1/data/{cid}/exists",
-            get(archivist_exists),
-        )
+        .route("/api/archivist/v1/data/{cid}/exists", get(archivist_exists))
         .route(
             "/api/archivist/v1/data/{cid}/network",
             post(archivist_download_network_manifest),
@@ -471,10 +503,7 @@ pub fn create_router_with_citadel(
         .route("/api/archivist/v1/stats", get(archivist_stats))
         .route("/api/archivist/v1/spr", get(spr_endpoint))
         // IPFS Cluster-style compatibility endpoints
-        .route(
-            "/api/ipfs-cluster/v1/pins",
-            get(ipfs_cluster_list_pins),
-        )
+        .route("/api/ipfs-cluster/v1/pins", get(ipfs_cluster_list_pins))
         .route(
             "/api/ipfs-cluster/v1/pins/{cid}",
             get(ipfs_cluster_get_pin)
@@ -501,45 +530,33 @@ pub fn create_router_with_citadel(
             "/api/citadel/v1/content/{content_slot}/{present}",
             post(citadel_content),
         )
-        .route(
-            "/api/citadel/v1/simulate",
-            post(citadel_simulate),
-        )
-        .route(
-            "/api/citadel/v1/sync/pull",
-            post(citadel_sync_pull),
-        )
-        .route(
-            "/api/citadel/v1/sync/push",
-            post(citadel_sync_push),
-        )
+        .route("/api/citadel/v1/simulate", post(citadel_simulate))
+        .route("/api/citadel/v1/sync/pull", post(citadel_sync_pull))
+        .route("/api/citadel/v1/sync/push", post(citadel_sync_push))
         .route(
             "/api/archivist/v1/connect/{peer_id}",
             get(connect_not_supported),
         )
-        .route(
-            "/api/archivist/v1/sales/slots",
-            get(marketplace_persistence_disabled),
-        )
+        .route("/api/archivist/v1/sales/slots", get(list_sales_slots))
         .route(
             "/api/archivist/v1/sales/slots/{slot_id}",
-            get(marketplace_persistence_disabled),
+            get(get_sales_slot),
         )
         .route(
             "/api/archivist/v1/sales/availability",
-            get(marketplace_persistence_disabled).post(marketplace_persistence_disabled),
+            get(get_sales_availability).post(set_sales_availability),
         )
         .route(
             "/api/archivist/v1/storage/request/{cid}",
-            post(marketplace_persistence_disabled),
+            post(create_storage_request),
         )
         .route(
             "/api/archivist/v1/storage/purchases",
-            get(marketplace_persistence_disabled),
+            get(list_storage_purchases),
         )
         .route(
             "/api/archivist/v1/storage/purchases/{id}",
-            get(marketplace_persistence_disabled),
+            get(get_storage_purchase),
         )
         .route("/api/archivist/v1/debug/info", get(debug_info_endpoint))
         .route(
@@ -1251,9 +1268,9 @@ async fn ipfs_cluster_recover_pin(
 ) -> Result<Json<IpfsClusterPinRecord>, ApiError> {
     {
         let mut pins = state.ipfs_cluster_pins.write().await;
-        let entry = pins
-            .entry(cid_str.clone())
-            .or_insert_with(|| IpfsClusterPinRecord::from_request(cid_str.clone(), Default::default()));
+        let entry = pins.entry(cid_str.clone()).or_insert_with(|| {
+            IpfsClusterPinRecord::from_request(cid_str.clone(), Default::default())
+        });
         entry.status = "queued".to_string();
         entry.error = None;
     }
@@ -1299,12 +1316,22 @@ async fn archivist_download_network_manifest(
 /// Archivist space endpoint (GET /api/archivist/v1/space)
 async fn archivist_space(State(state): State<ApiState>) -> impl IntoResponse {
     let stats = state.block_store.stats().await;
+    let quota_reserved_bytes = if let Some(store) = &state.marketplace {
+        store
+            .list_active_slots()
+            .await
+            .into_iter()
+            .map(|slot| slot.request.ask.slot_size as usize)
+            .sum()
+    } else {
+        0
+    };
 
     Json(SpaceResponse {
         total_blocks: stats.block_count,
-        quota_max_bytes: stats.total_size,
+        quota_max_bytes: state.marketplace_runtime.quota_max_bytes,
         quota_used_bytes: stats.total_size,
-        quota_reserved_bytes: 0,
+        quota_reserved_bytes,
     })
 }
 
@@ -1315,11 +1342,115 @@ async fn connect_not_supported() -> Result<StatusCode, ApiError> {
     ))
 }
 
-/// Placeholder for marketplace-dependent APIs.
-async fn marketplace_persistence_disabled() -> Result<StatusCode, ApiError> {
-    Err(ApiError::ServiceUnavailable(
-        "Persistence is not enabled".to_string(),
-    ))
+fn marketplace_store(state: &ApiState) -> Result<MarketplaceStore, ApiError> {
+    state
+        .marketplace
+        .clone()
+        .ok_or_else(|| ApiError::ServiceUnavailable("Persistence is not enabled".to_string()))
+}
+
+async fn get_sales_availability(
+    State(state): State<ApiState>,
+) -> Result<Json<SaleAvailabilityInput>, ApiError> {
+    let store = marketplace_store(&state)?;
+    let availability = store
+        .availability()
+        .await
+        .ok_or_else(|| ApiError::NotFound("sales availability not configured".to_string()))?;
+    Ok(Json(availability.to_input()))
+}
+
+async fn set_sales_availability(
+    State(state): State<ApiState>,
+    Json(input): Json<SaleAvailabilityInput>,
+) -> Result<StatusCode, ApiError> {
+    let store = marketplace_store(&state)?;
+    store
+        .set_availability(input, state.marketplace_runtime.quota_max_bytes as u64)
+        .await
+        .map_err(ApiError::Unprocessable)?;
+    Ok(StatusCode::CREATED)
+}
+
+async fn list_sales_slots(
+    State(state): State<ApiState>,
+) -> Result<Json<Vec<ActiveSlotResponse>>, ApiError> {
+    let store = marketplace_store(&state)?;
+    Ok(Json(store.list_active_slots().await))
+}
+
+async fn get_sales_slot(
+    State(state): State<ApiState>,
+    Path(slot_id): Path<String>,
+) -> Result<Json<SalesSlotResponse>, ApiError> {
+    let store = marketplace_store(&state)?;
+    let slot = store
+        .get_slot(&slot_id)
+        .await
+        .ok_or_else(|| ApiError::NotFound(slot_id.clone()))?;
+    Ok(Json(slot))
+}
+
+async fn list_storage_purchases(
+    State(state): State<ApiState>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let store = marketplace_store(&state)?;
+    Ok(Json(store.list_purchase_ids().await))
+}
+
+async fn get_storage_purchase(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<PurchaseResponse>, ApiError> {
+    let store = marketplace_store(&state)?;
+    let purchase = store
+        .get_purchase(&id)
+        .await
+        .ok_or_else(|| ApiError::NotFound(id.clone()))?;
+    Ok(Json(PurchaseResponse {
+        request_id: purchase.request_id,
+        request: Some(purchase.request),
+        state: purchase.state.as_api_str().to_string(),
+        error: purchase.error,
+    }))
+}
+
+async fn create_storage_request(
+    State(state): State<ApiState>,
+    Path(cid_str): Path<String>,
+    Json(request): Json<StorageRequestInput>,
+) -> Result<String, ApiError> {
+    let store = marketplace_store(&state)?;
+    let cid: Cid = cid_str
+        .parse()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
+    let slot_size = marketplace_slot_size(&state, &cid).await?;
+    store
+        .reserve_request(
+            cid_to_string(&cid),
+            request,
+            slot_size,
+            state.marketplace_runtime.eth_account.clone(),
+        )
+        .await
+        .map_err(ApiError::Unprocessable)
+}
+
+async fn marketplace_slot_size(state: &ApiState, cid: &Cid) -> Result<u64, ApiError> {
+    match state.block_store.get(cid).await {
+        Ok(block) => {
+            if let Ok(manifest) = Manifest::from_block(&block) {
+                Ok(manifest.dataset_size)
+            } else {
+                Ok(block.data.len() as u64)
+            }
+        }
+        Err(StorageError::BlockNotFound(_)) => Err(ApiError::NotFound(cid.to_string())),
+        Err(err) => Err(ApiError::Internal(format!(
+            "Failed to inspect marketplace request content: {}",
+            err
+        ))),
+    }
 }
 
 /// Lightweight debug info endpoint for compatibility.
@@ -1329,6 +1460,7 @@ async fn debug_info_endpoint(State(state): State<ApiState>) -> impl IntoResponse
         .read()
         .map(|v| v.iter().map(ToString::to_string).collect::<Vec<_>>())
         .unwrap_or_default();
+    let marketplace_runtime = state.marketplace_runtime.clone();
 
     Json(serde_json::json!({
         "id": state.peer_id,
@@ -1336,9 +1468,18 @@ async fn debug_info_endpoint(State(state): State<ApiState>) -> impl IntoResponse
         "repo": "unknown",
         "spr": "",
         "announceAddresses": [],
-        "ethAddress": serde_json::Value::Null,
+        "ethAddress": marketplace_runtime.eth_account,
         "table": {"localNode": serde_json::Value::Null, "nodes": []},
-        "archivist": {"version": env!("CARGO_PKG_VERSION"), "revision": "unknown", "contracts": "unknown"}
+        "archivist": {
+            "version": env!("CARGO_PKG_VERSION"),
+            "revision": "unknown",
+            "contracts": marketplace_runtime.contracts_addresses,
+            "marketplaceAddress": marketplace_runtime.marketplace_address,
+            "ethProvider": marketplace_runtime.eth_provider,
+            "persistence": marketplace_runtime.persistence_enabled,
+            "validator": marketplace_runtime.validator,
+            "prover": marketplace_runtime.prover
+        }
     }))
 }
 
@@ -1641,7 +1782,11 @@ async fn archivist_upload_raw_block(
 
 /// Archivist-compatible download endpoint (GET /api/archivist/v1/data/:cid/network/stream)
 /// Returns raw binary data
-async fn fetch_cid_from_peers(state: &ApiState, cid: &Cid, cid_str: &str) -> Result<Vec<u8>, ApiError> {
+async fn fetch_cid_from_peers(
+    state: &ApiState,
+    cid: &Cid,
+    cid_str: &str,
+) -> Result<Vec<u8>, ApiError> {
     info!(
         "Archivist API: Block {} not found locally, fetching from peers",
         cid_str
@@ -1682,10 +1827,10 @@ async fn fetch_cid_from_peers(state: &ApiState, cid: &Cid, cid_str: &str) -> Res
 
                             // Avoid storing fetched bytes under manifest CID.
                             if cid.codec() != 0xcd01 {
-                                let block =
-                                    Block::from_cid_and_data(cid.clone(), data.to_vec()).map_err(|e| {
-                                    ApiError::Internal(format!("Failed to create block: {}", e))
-                                })?;
+                                let block = Block::from_cid_and_data(cid.clone(), data.to_vec())
+                                    .map_err(|e| {
+                                        ApiError::Internal(format!("Failed to create block: {}", e))
+                                    })?;
                                 state.block_store.put(block).await.map_err(|e| {
                                     ApiError::Internal(format!("Failed to store block: {}", e))
                                 })?;
@@ -1714,7 +1859,10 @@ async fn fetch_cid_from_peers(state: &ApiState, cid: &Cid, cid_str: &str) -> Res
         }
     }
 
-    info!("Archivist API: Block {} not available from any peer", cid_str);
+    info!(
+        "Archivist API: Block {} not available from any peer",
+        cid_str
+    );
     Err(ApiError::NotFound(cid_str.to_string()))
 }
 
@@ -1803,6 +1951,7 @@ async fn spr_endpoint(State(state): State<ApiState>) -> Result<String, ApiError>
 enum ApiError {
     BadRequest(String),
     NotFound(String),
+    Unprocessable(String),
     ServiceUnavailable(String),
     NotImplemented(String),
     Internal(String),
@@ -1812,7 +1961,8 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::NotFound(cid) => (StatusCode::NOT_FOUND, format!("Block not found: {}", cid)),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            ApiError::Unprocessable(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             ApiError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             ApiError::NotImplemented(msg) => (StatusCode::NOT_IMPLEMENTED, msg),
             ApiError::Internal(msg) => {
@@ -1829,13 +1979,48 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::citadel::{
+        CitadelSyncPullResponse, CitadelSyncPushResponse, DefederationGuardConfig, DefederationNode,
+    };
+    use crate::marketplace::MarketplaceRuntimeInfo;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use crate::citadel::{
-        CitadelSyncPullResponse, CitadelSyncPushResponse, DefederationGuardConfig,
-        DefederationNode,
-    };
     use tower::util::ServiceExt;
+
+    async fn marketplace_test_app(block_store: Arc<BlockStore>) -> (Router, tempfile::TempDir) {
+        use crate::botg::BoTgConfig;
+        use libp2p::identity::Keypair;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let metrics = Metrics::new();
+        let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
+        let keypair = Arc::new(Keypair::generate_ed25519());
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
+        let marketplace = MarketplaceStore::open(tmp.path().join("marketplace.json"))
+            .await
+            .unwrap();
+
+        let app = create_router_with_runtime(
+            block_store,
+            metrics,
+            "12D3KooWTest123".to_string(),
+            botg,
+            keypair,
+            listen_addrs,
+            None,
+            Some(marketplace),
+            MarketplaceRuntimeInfo {
+                persistence_enabled: true,
+                quota_max_bytes: 4096,
+                eth_account: Some("0xabc".to_string()),
+                ..MarketplaceRuntimeInfo::default()
+            },
+        );
+
+        (app, tmp)
+    }
 
     #[tokio::test]
     async fn test_health_check() {
@@ -1985,6 +2170,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_marketplace_endpoints_require_persistence() {
+        use crate::botg::BoTgConfig;
+        use libp2p::identity::Keypair;
+
+        let block_store = Arc::new(BlockStore::new());
+        let metrics = Metrics::new();
+        let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
+        let keypair = Arc::new(Keypair::generate_ed25519());
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
+        let app = create_router(
+            block_store,
+            metrics,
+            "12D3KooWTest123".to_string(),
+            botg,
+            keypair,
+            listen_addrs,
+        );
+
+        let request = Request::builder()
+            .uri("/api/archivist/v1/sales/availability")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_availability_and_purchase_flow() {
+        let block_store = Arc::new(BlockStore::new());
+        let block = Block::new_sha256(b"marketplace payload".to_vec()).unwrap();
+        let cid = block.cid.to_string();
+        block_store.put(block).await.unwrap();
+
+        let (app, _tmp) = marketplace_test_app(block_store).await;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/archivist/v1/sales/availability")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"minimumPricePerBytePerSecond":"2","maximumCollateralPerByte":"9","maximumDuration":3600,"availableUntil":0}"#,
+            ))
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/api/archivist/v1/storage/request/{}", cid))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"duration":3600,"proofProbability":"4","pricePerBytePerSecond":"42","collateralPerByte":"7","expiry":300,"nodes":3,"tolerance":1}"#,
+            ))
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let purchase_id = String::from_utf8(
+            axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(!purchase_id.trim().is_empty());
+
+        let request = Request::builder()
+            .uri("/api/archivist/v1/storage/purchases")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let purchases: Vec<String> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(purchases, vec![purchase_id.clone()]);
+
+        let request = Request::builder()
+            .uri(format!(
+                "/api/archivist/v1/storage/purchases/{}",
+                purchase_id
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let purchase: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(purchase["state"], "submitted");
+
+        let request = Request::builder()
+            .uri("/api/archivist/v1/sales/slots")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let slots: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(slots.len(), 1);
+    }
+
+    #[tokio::test]
     async fn test_citadel_status_disabled_when_mode_off() {
         use crate::botg::BoTgConfig;
         use libp2p::identity::Keypair;
@@ -2078,9 +2371,9 @@ mod tests {
         let metrics = Metrics::new();
         let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
         let keypair = Arc::new(Keypair::generate_ed25519());
-        let listen_addrs = Arc::new(RwLock::new(vec![
-            "/ip4/127.0.0.1/tcp/8070".parse().unwrap()
-        ]));
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
 
         let guard = DefederationGuardConfig::default();
         let citadel = Arc::new(AsyncRwLock::new(DefederationNode::new(
@@ -2138,9 +2431,9 @@ mod tests {
         let metrics = Metrics::new();
         let botg = Arc::new(BoTgProtocol::new(BoTgConfig::default()));
         let keypair = Arc::new(Keypair::generate_ed25519());
-        let listen_addrs = Arc::new(RwLock::new(vec![
-            "/ip4/127.0.0.1/tcp/8070".parse().unwrap()
-        ]));
+        let listen_addrs = Arc::new(RwLock::new(vec!["/ip4/127.0.0.1/tcp/8070"
+            .parse()
+            .unwrap()]));
 
         let guard = DefederationGuardConfig::default();
         let citadel = Arc::new(AsyncRwLock::new(DefederationNode::new(
