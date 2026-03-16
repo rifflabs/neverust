@@ -18,14 +18,12 @@ async fn test_peer_dial_latency() {
     let metrics1 = Metrics::new();
     let metrics2 = Metrics::new();
 
-    let (mut swarm1, _tx1, _keypair1) =
-        create_swarm(store1, "altruistic".to_string(), 1, metrics1)
-            .await
-            .expect("Failed to create swarm1");
-    let (mut swarm2, _tx2, _keypair2) =
-        create_swarm(store2, "altruistic".to_string(), 1, metrics2)
-            .await
-            .expect("Failed to create swarm2");
+    let (mut swarm1, _tx1, _keypair1) = create_swarm(store1, "altruistic".to_string(), 1, metrics1)
+        .await
+        .expect("Failed to create swarm1");
+    let (mut swarm2, _tx2, _keypair2) = create_swarm(store2, "altruistic".to_string(), 1, metrics2)
+        .await
+        .expect("Failed to create swarm2");
 
     // Start listening on swarm1
     swarm1

@@ -49,7 +49,13 @@ impl LensGraph {
         }
     }
 
-    pub fn update_follow(&mut self, site_id: SiteId, target_site_id: SiteId, ts: Lamport, enabled: bool) {
+    pub fn update_follow(
+        &mut self,
+        site_id: SiteId,
+        target_site_id: SiteId,
+        ts: Lamport,
+        enabled: bool,
+    ) {
         Self::lww_update(
             &mut self.follows,
             (site_id, target_site_id),
@@ -448,7 +454,9 @@ impl DefederationNode {
                 site_id,
                 content_slot,
                 present,
-            } => self.graph.update_content(site_id, content_slot, ts, present),
+            } => self
+                .graph
+                .update_content(site_id, content_slot, ts, present),
             LensOpKind::TrustOrigin { origin, trusted } => self.trust_origin(origin, trusted),
         }
     }
@@ -466,7 +474,8 @@ impl DefederationNode {
         let op_origin = op.origin;
         let current = self.frontier.get(&op.origin).copied().unwrap_or(0);
         if op.counter <= current {
-            self.stats.rejected_old_or_duplicate = self.stats.rejected_old_or_duplicate.saturating_add(1);
+            self.stats.rejected_old_or_duplicate =
+                self.stats.rejected_old_or_duplicate.saturating_add(1);
             return;
         }
 
@@ -707,7 +716,10 @@ pub async fn fetch_flagship_trust_snapshot(url: &str) -> Result<FlagshipTrustSna
         .await
         .map_err(|e| format!("flagship fetch failed: {}", e))?;
     if !resp.status().is_success() {
-        return Err(format!("flagship fetch failed with status {}", resp.status()));
+        return Err(format!(
+            "flagship fetch failed with status {}",
+            resp.status()
+        ));
     }
     resp.json::<FlagshipTrustSnapshot>()
         .await
@@ -761,8 +773,9 @@ impl IdleBandwidthGateConfig {
         if swarm_size <= self.huge_swarm_threshold {
             return self.max_idle_bytes_per_sec;
         }
-        let growth = ((swarm_size as f64 / self.huge_swarm_threshold as f64).log2().max(0.0))
-            as u64;
+        let growth = ((swarm_size as f64 / self.huge_swarm_threshold as f64)
+            .log2()
+            .max(0.0)) as u64;
         self.max_idle_bytes_per_sec
             .saturating_add(growth.saturating_mul(8 * 1024))
     }
@@ -837,8 +850,16 @@ fn build_two_host_topology(node_count: usize, fanout: usize) -> Vec<Vec<usize>> 
         let mut peers = HashSet::new();
         let local_base = if i < half { 0 } else { half };
         let remote_base = if i < half { half } else { 0 };
-        let local_len = if i < half { half.max(1) } else { (node_count - half).max(1) };
-        let remote_len = if i < half { (node_count - half).max(1) } else { half.max(1) };
+        let local_len = if i < half {
+            half.max(1)
+        } else {
+            (node_count - half).max(1)
+        };
+        let remote_len = if i < half {
+            (node_count - half).max(1)
+        } else {
+            half.max(1)
+        };
 
         let local_target = fanout / 2;
         let mut step = 1usize;
@@ -866,7 +887,12 @@ fn build_two_host_topology(node_count: usize, fanout: usize) -> Vec<Vec<usize>> 
     topology
 }
 
-fn make_invalid_spam_op(origin: NodeId, counter: u64, host_id: u8, target_site_id: SiteId) -> LensOp {
+fn make_invalid_spam_op(
+    origin: NodeId,
+    counter: u64,
+    host_id: u8,
+    target_site_id: SiteId,
+) -> LensOp {
     LensOp {
         origin,
         counter,
@@ -895,7 +921,9 @@ fn make_sybil_op(origin: NodeId, counter: u64, host_id: u8, site_id: SiteId, bit
     .mine_nonce(bits)
 }
 
-pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> DefederationSimulationResult {
+pub fn run_defederation_simulation(
+    cfg: &DefederationSimulationConfig,
+) -> DefederationSimulationResult {
     if cfg.node_count == 0 {
         return DefederationSimulationResult {
             converged: true,
@@ -926,7 +954,10 @@ pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> Defede
         let host_id = if i < cfg.node_count / 2 { 0 } else { 1 };
         let local_site_id = i as SiteId + 1;
         let mut trusted = HashSet::new();
-        for origin in writer_origins.iter().take(cfg.trusted_seed_origins.min(writer_count)) {
+        for origin in writer_origins
+            .iter()
+            .take(cfg.trusted_seed_origins.min(writer_count))
+        {
             trusted.insert(*origin);
         }
         trusted.insert(i as NodeId);
@@ -971,16 +1002,17 @@ pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> Defede
         // Honest writes (bounded).
         if round < cfg.rounds {
             for op_idx in 0..cfg.honest_write_ops_per_round {
-                let writer = ((round as usize).wrapping_mul(4099).wrapping_add(op_idx * 131)) % writer_count;
-                let target = ((writer + (round as usize % writer_count) + 1) % writer_count) as SiteId + 1;
+                let writer = ((round as usize)
+                    .wrapping_mul(4099)
+                    .wrapping_add(op_idx * 131))
+                    % writer_count;
+                let target =
+                    ((writer + (round as usize % writer_count) + 1) % writer_count) as SiteId + 1;
 
                 let op = if (round + op_idx as u64) % 5 == 0 {
                     nodes[writer].emit_local_follow(target, true)
                 } else {
-                    nodes[writer].emit_local_content(
-                        0,
-                        ((round + op_idx as u64) % 7) != 0,
-                    )
+                    nodes[writer].emit_local_content(0, ((round + op_idx as u64) % 7) != 0)
                 };
 
                 op_store.entry(op.origin).or_default().push(op);
@@ -1016,13 +1048,7 @@ pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> Defede
                     .saturating_add((m as u32).saturating_mul(10_000))
                     .saturating_add(round as u32)
                     .saturating_add(i as u32);
-                let op = make_sybil_op(
-                    sybil_origin,
-                    1,
-                    host_id,
-                    site_id,
-                    cfg.guard.base_pow_bits,
-                );
+                let op = make_sybil_op(sybil_origin, 1, host_id, site_id, cfg.guard.base_pow_bits);
                 inboxes[target].push(op);
                 bytes_sent_this_round[idx] = bytes_sent_this_round[idx]
                     .saturating_add(cfg.idle_gate.op_bytes_estimate as u64);
@@ -1045,7 +1071,8 @@ pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> Defede
                 continue;
             }
             let stride = peers.len().max(1);
-            let start = ((src.wrapping_mul(17)).wrapping_add((round as usize).wrapping_mul(31))) % stride;
+            let start =
+                ((src.wrapping_mul(17)).wrapping_add((round as usize).wrapping_mul(31))) % stride;
             let to_probe = repair_peers.min(peers.len());
             for step in 0..to_probe {
                 let dst = peers[(start + step) % peers.len()];
@@ -1057,7 +1084,8 @@ pub fn run_defederation_simulation(cfg: &DefederationSimulationConfig) -> Defede
                 {
                     continue;
                 }
-                bytes_sent_this_round[src] = bytes_sent_this_round[src].saturating_add(beacon_bytes);
+                bytes_sent_this_round[src] =
+                    bytes_sent_this_round[src].saturating_add(beacon_bytes);
 
                 let mut missing_any = false;
                 for (w_idx, origin) in writer_origins.iter().enumerate() {
@@ -1264,11 +1292,7 @@ mod tests {
 
         let out = run_defederation_simulation(&cfg);
         println!("10k simulation result: {:?}", out);
-        assert!(
-            out.converged,
-            "expected convergence, got {:?}",
-            out
-        );
+        assert!(out.converged, "expected convergence, got {:?}", out);
         assert!(out.total_rejected_pow > 0);
         assert!(out.total_rejected_sybil > 0);
         assert!(out.max_idle_bytes_per_sec_observed <= out.idle_budget_bytes_per_sec);

@@ -115,10 +115,7 @@ impl ArchivistCluster {
             .await
             .map_err(|e| ClusterError::SourceFetch(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(ClusterError::SourceFetch(format!(
-                "HTTP {}",
-                resp.status()
-            )));
+            return Err(ClusterError::SourceFetch(format!("HTTP {}", resp.status())));
         }
         let payload = resp
             .bytes()
@@ -137,12 +134,8 @@ impl ArchivistCluster {
             return Err(ClusterError::InvalidCid("empty cid".to_string()));
         }
         let replicas = replicas.max(1);
-        let healthy: Vec<ClusterMember> = self
-            .members
-            .iter()
-            .filter(|m| m.healthy)
-            .cloned()
-            .collect();
+        let healthy: Vec<ClusterMember> =
+            self.members.iter().filter(|m| m.healthy).cloned().collect();
         if healthy.is_empty() {
             return Err(ClusterError::Unsupported(
                 "no healthy cluster members".to_string(),
@@ -287,7 +280,10 @@ mod tests {
         let mut members = Vec::new();
         for i in 0..4 {
             let node = ClusterNode::new(format!("n{}", i), format!("local://{}", i));
-            members.push(ClusterMember::local(node, Arc::new(crate::storage::BlockStore::new())));
+            members.push(ClusterMember::local(
+                node,
+                Arc::new(crate::storage::BlockStore::new()),
+            ));
         }
         // Force first node unhealthy to exercise failover path.
         members[0].healthy = false;

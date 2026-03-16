@@ -56,7 +56,8 @@ pub fn select_replicas(cid_str: &str, nodes: &[ClusterNode], replicas: usize) ->
         let mut lo = [0u8; 8];
         hi.copy_from_slice(&bytes[0..8]);
         lo.copy_from_slice(&bytes[8..16]);
-        let base = ((u128::from(u64::from_le_bytes(hi))) << 64) | u128::from(u64::from_le_bytes(lo));
+        let base =
+            ((u128::from(u64::from_le_bytes(hi))) << 64) | u128::from(u64::from_le_bytes(lo));
         let score = base.saturating_mul(node.weight.max(1) as u128);
         scored.push((score, node.clone()));
     }
@@ -104,6 +105,9 @@ mod tests {
     #[test]
     fn upload_path_auto_selection() {
         // Unknown/invalid => raw fast-path
-        assert_eq!(upload_path_for_cid_str("not-a-cid"), "/api/archivist/v1/data/raw");
+        assert_eq!(
+            upload_path_for_cid_str("not-a-cid"),
+            "/api/archivist/v1/data/raw"
+        );
     }
 }

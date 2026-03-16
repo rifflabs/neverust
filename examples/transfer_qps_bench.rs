@@ -159,9 +159,11 @@ async fn wait_health(client: &Client, base: &str, timeout: Duration) -> Result<(
 }
 
 fn default_neverust_bin() -> PathBuf {
-    let from_exe = env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().and_then(Path::parent).map(|d| d.join("neverust")));
+    let from_exe = env::current_exe().ok().and_then(|p| {
+        p.parent()
+            .and_then(Path::parent)
+            .map(|d| d.join("neverust"))
+    });
     from_exe.unwrap_or_else(|| PathBuf::from("target/release/neverust"))
 }
 
@@ -205,7 +207,11 @@ fn start_neverust_node(
     Ok(NodeGuard { child })
 }
 
-async fn transfer_once(client: &Client, route: &Route, payload: Vec<u8>) -> Result<(), TransferError> {
+async fn transfer_once(
+    client: &Client,
+    route: &Route,
+    payload: Vec<u8>,
+) -> Result<(), TransferError> {
     let up_url = upload_url(&route.src_base, route.raw_upload);
     let up_resp = client
         .post(up_url)
@@ -238,7 +244,10 @@ async fn transfer_once(client: &Client, route: &Route, payload: Vec<u8>) -> Resu
         return Err(TransferError::Download);
     }
 
-    let bytes = down_resp.bytes().await.map_err(|_| TransferError::Download)?;
+    let bytes = down_resp
+        .bytes()
+        .await
+        .map_err(|_| TransferError::Download)?;
     if bytes.as_ref() != payload.as_slice() {
         return Err(TransferError::Mismatch);
     }

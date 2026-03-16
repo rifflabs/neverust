@@ -56,7 +56,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let run_id = now_run_id()?;
 
     let data_dir = PathBuf::from(format!("/mnt/riffcastle/upload-test/50g-file-{}", run_id));
-    let input_file = PathBuf::from(format!("/mnt/riffcastle/upload-test/input-50g-{}.bin", run_id));
+    let input_file = PathBuf::from(format!(
+        "/mnt/riffcastle/upload-test/input-50g-{}.bin",
+        run_id
+    ));
     let log_file = PathBuf::from(format!("/tmp/neverust-upload-50g-file-{}.log", run_id));
     let resp_file = PathBuf::from(format!("/tmp/neverust-upload-50g-file-{}.resp", run_id));
 

@@ -42,16 +42,8 @@ fn parse_nodes(spec: &str) -> Result<Vec<ClusterNode>, Box<dyn Error>> {
         let parts: Vec<&str> = trimmed.split(',').map(str::trim).collect();
         let (id, base_url, weight) = match parts.len() {
             0 => continue,
-            1 => (
-                format!("node-{}", idx),
-                normalize_base_url(parts[0]),
-                1u32,
-            ),
-            2 => (
-                parts[0].to_string(),
-                normalize_base_url(parts[1]),
-                1u32,
-            ),
+            1 => (format!("node-{}", idx), normalize_base_url(parts[0]), 1u32),
+            2 => (parts[0].to_string(), normalize_base_url(parts[1]), 1u32),
             _ => (
                 parts[0].to_string(),
                 normalize_base_url(parts[1]),
@@ -80,7 +72,9 @@ fn print_usage(bin: &str) {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
-    let bin = args.first().map_or("cluster_pin_orchestrator", String::as_str);
+    let bin = args
+        .first()
+        .map_or("cluster_pin_orchestrator", String::as_str);
     if args.len() < 5 {
         print_usage(bin);
         std::process::exit(2);
@@ -143,7 +137,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(format!("upload failed for {}: HTTP {} {}", base, status, body));
+                return Err(format!(
+                    "upload failed for {}: HTTP {} {}",
+                    base, status, body
+                ));
             }
             let returned = resp
                 .text()

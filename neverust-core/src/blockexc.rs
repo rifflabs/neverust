@@ -17,8 +17,10 @@ use tracing::{debug, info, warn};
 
 use crate::archivist_tree::ArchivistTree;
 use crate::manifest::Manifest;
+use crate::messages::{
+    ArchivistProof, BlockDelivery, BlockPresence, BlockPresenceType, ProofNode, WantType,
+};
 use crate::metrics::Metrics;
-use crate::messages::{ArchivistProof, BlockDelivery, BlockPresence, BlockPresenceType, ProofNode, WantType};
 use crate::storage::BlockStore;
 
 pub const PROTOCOL_ID: &str = "/archivist/blockexc/1.0.0";
@@ -329,16 +331,18 @@ impl ConnectionHandler for BlockExcHandler {
                                                         continue;
                                                     }
 
-                                                    let Some(address) = entry.address.as_ref() else {
+                                                    let Some(address) = entry.address.as_ref()
+                                                    else {
                                                         continue;
                                                     };
-                                                    let want_type = WantType::from_i32(entry.want_type)
-                                                        .unwrap_or(WantType::WantHave);
+                                                    let want_type =
+                                                        WantType::from_i32(entry.want_type)
+                                                            .unwrap_or(WantType::WantHave);
 
                                                     if address.leaf {
-                                                        let Ok(tree_cid) =
-                                                            Cid::try_from(address.tree_cid.as_slice())
-                                                        else {
+                                                        let Ok(tree_cid) = Cid::try_from(
+                                                            address.tree_cid.as_slice(),
+                                                        ) else {
                                                             continue;
                                                         };
                                                         let index = address.index;
@@ -378,12 +382,13 @@ impl ConnectionHandler for BlockExcHandler {
                                                                 }
                                                             }
                                                             WantType::WantBlock => {
-                                                                if let Some(delivery) = resolve_leaf_delivery(
-                                                                    block_store.as_ref(),
-                                                                    &tree_cid,
-                                                                    index,
-                                                                )
-                                                                .await
+                                                                if let Some(delivery) =
+                                                                    resolve_leaf_delivery(
+                                                                        block_store.as_ref(),
+                                                                        &tree_cid,
+                                                                        index,
+                                                                    )
+                                                                    .await
                                                                 {
                                                                     metrics.block_sent(
                                                                         delivery.data.len(),
@@ -399,7 +404,8 @@ impl ConnectionHandler for BlockExcHandler {
                                                             continue;
                                                         };
 
-                                                        let block = block_store.get(&cid).await.ok();
+                                                        let block =
+                                                            block_store.get(&cid).await.ok();
                                                         match want_type {
                                                             WantType::WantHave => {
                                                                 let have = block.is_some();
@@ -629,10 +635,10 @@ impl ConnectionHandler for BlockExcHandler {
 
                 // Spawn task to handle outbound stream - send WantList and receive blocks
                 tokio::spawn(async move {
+                    use crate::cid_blake3::verify_blake3;
                     use crate::messages::{
                         decode_message, encode_message, Message, WantType, Wantlist, WantlistEntry,
                     };
-                    use crate::cid_blake3::verify_blake3;
                     use crate::storage::Block;
 
                     let mut stream = stream;
@@ -705,7 +711,8 @@ impl ConnectionHandler for BlockExcHandler {
                                                 msg_block.data.len()
                                             );
 
-                                            if let Err(e) = verify_blake3(&msg_block.data, &requested_cid)
+                                            if let Err(e) =
+                                                verify_blake3(&msg_block.data, &requested_cid)
                                             {
                                                 warn!(
                                                     "BlockExc: CID verification failed for requested {}: {}",

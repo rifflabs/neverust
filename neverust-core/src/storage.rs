@@ -1978,9 +1978,9 @@ impl DeltaFlatStore {
                 BlockStore::env_flag("NEVERUST_DELTAFLAT_SKIP_EXISTS_CHECK", false);
             let lane_count = store.lane_count as usize;
             let class_count = DELTA_SIZE_CLASSES.len();
-            let bin_count = class_count
-                .checked_mul(lane_count)
-                .ok_or_else(|| StorageError::DatabaseError("deltaflat bin count overflow".to_string()))?;
+            let bin_count = class_count.checked_mul(lane_count).ok_or_else(|| {
+                StorageError::DatabaseError("deltaflat bin count overflow".to_string())
+            })?;
             let mut bins: Vec<Vec<(Block, Vec<u8>)>> = (0..bin_count).map(|_| Vec::new()).collect();
             let mut active_bins = Vec::new();
             for block in blocks {
