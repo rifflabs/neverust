@@ -33,6 +33,15 @@ struct Cli {
 enum Commands {
     /// Start the Archivist node
     Start(StartCommand),
+    /// Generate a new Ethereum private key for marketplace operations
+    GenerateKey(GenerateKeyCommand),
+}
+
+#[derive(Parser, Debug, Clone)]
+pub struct GenerateKeyCommand {
+    /// Output path for the key file (default: ./data/eth.key)
+    #[arg(long, default_value = "./data/eth.key")]
+    pub output: PathBuf,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -277,13 +286,32 @@ impl Default for Config {
     }
 }
 
-impl Config {
-    /// Create config from CLI arguments
-    pub fn from_cli() -> Result<Self, ConfigError> {
-        let cli = Cli::parse();
+/// Result of parsing CLI arguments — either a node config or a
+/// standalone command that should be handled before starting the node.
+pub enum CliAction {
+    /// Start the node with this config.
+    Start(Config),
+    /// Generate an ETH key at the given path, then exit.
+    GenerateKey(PathBuf),
+}
 
+impl Config {
+    /// Parse CLI and return the action to take.
+    pub fn parse_cli() -> Result<CliAction, ConfigError> {
+        let cli = Cli::parse();
         match cli.command {
-            Commands::Start(cmd) => Ok(cmd.into()),
+            Commands::Start(cmd) => Ok(CliAction::Start(cmd.into())),
+            Commands::GenerateKey(cmd) => Ok(CliAction::GenerateKey(cmd.output)),
+        }
+    }
+
+    /// Create config from CLI arguments (convenience wrapper for `start`).
+    pub fn from_cli() -> Result<Self, ConfigError> {
+        match Self::parse_cli()? {
+            CliAction::Start(cfg) => Ok(cfg),
+            CliAction::GenerateKey(_) => Err(ConfigError::Invalid(
+                "generate-key command should be handled by main".to_string(),
+            )),
         }
     }
 
