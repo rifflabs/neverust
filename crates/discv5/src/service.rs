@@ -1080,24 +1080,36 @@ impl Service {
     }
 
     /// Sends an AddProvider message (fire-and-forget, no response expected).
+    ///
+    /// Unlike other RPC messages, this does NOT track the request or expect
+    /// a response. The message is sent directly via the handler without
+    /// creating an active request entry.
     fn send_add_provider(
         &mut self,
         contact: NodeContact,
         content_id: Vec<u8>,
         provider_record: Vec<u8>,
     ) {
-        let request_body = RequestBody::AddProvider {
-            content_id,
-            provider_record,
+        let request = Request {
+            id: RequestId::random(),
+            body: RequestBody::AddProvider {
+                content_id,
+                provider_record,
+            },
         };
 
-        let active_request = ActiveRequest {
-            contact,
-            request_body,
-            query_id: None,
-            callback: None,
-        };
-        self.send_rpc_request(active_request);
+        debug!(
+            request = %request,
+            node = %contact,
+            "Sending AddProvider (fire-and-forget)",
+        );
+
+        if let Err(e) = self
+            .handler_send
+            .send(HandlerIn::Request(contact, Box::new(request)))
+        {
+            warn!(error = %e, "Failed to send AddProvider");
+        }
     }
 
     /// Sends a NODES response, given a list of found ENR's. This function splits the nodes up
