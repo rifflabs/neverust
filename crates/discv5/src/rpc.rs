@@ -42,9 +42,9 @@ fn encode_field_bytes(field_num: u32, data: &[u8]) -> Vec<u8> {
 
 /// Wraps protobuf fields with a varint length prefix (matching Nim's `initProtoBuffer`/`finish()`).
 fn encode_proto_message(fields: &[u8]) -> Vec<u8> {
-    let mut buf = encode_varint(fields.len() as u64);
-    buf.extend_from_slice(fields);
-    buf
+    // No length prefix — raw protobuf fields concatenated.
+    // The Archivist's initProtoBuffer().finish() does NOT add a length prefix.
+    fields.to_vec()
 }
 
 // ---------------------------------------------------------------------------
@@ -404,19 +404,10 @@ fn encode_envelope(msg_type: u8, request_id: &[u8], inner_body: &[u8]) -> Vec<u8
     buf
 }
 
-/// Decode envelope: strip length prefix, then extract field 1 (request_id) and field 2 (body).
+/// Decode envelope: extract field 1 (request_id) and field 2 (body).
+/// No length prefix — raw protobuf fields.
 fn decode_envelope(data: &[u8]) -> Result<(Vec<u8>, Vec<u8>), DecoderError> {
-    // Strip the varint length prefix
-    let (length, prefix_len) = decode_varint(data)?;
-    let length = length as usize;
-    if prefix_len + length > data.len() {
-        return Err(DecoderError::Custom("Envelope length exceeds data"));
-    }
-    let inner = &data[prefix_len..prefix_len + length];
-    if prefix_len + length < data.len() {
-        return Err(DecoderError::Custom("Reject the extra data"));
-    }
-    let fields = decode_all_fields(inner)?;
+    let fields = decode_all_fields(data)?;
     let mut request_id: Option<Vec<u8>> = None;
     let mut body: Option<Vec<u8>> = None;
     for (fnum, _wt, fdata) in fields {
@@ -561,13 +552,8 @@ fn parse_multiaddr(data: &[u8]) -> Option<(Ipv4Addr, u16, &'static str)> {
 
 /// Decode a length-prefixed protobuf body into fields.
 fn decode_body_fields(data: &[u8]) -> Result<Vec<(u32, u8, Vec<u8>)>, DecoderError> {
-    let (length, prefix_len) = decode_varint(data)?;
-    let length = length as usize;
-    if prefix_len + length > data.len() {
-        return Err(DecoderError::Custom("Body length exceeds data"));
-    }
-    let inner = &data[prefix_len..prefix_len + length];
-    decode_all_fields(inner)
+    // No length prefix — raw protobuf fields.
+    decode_all_fields(data)
 }
 
 // ---------------------------------------------------------------------------
