@@ -1189,13 +1189,9 @@ async fn archivist_download_local(
             .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
     }
 
-    // Regular file — stream it
+    // Regular file — stream it with Range support
     let data = retrieve_local_cid_data(&state, &cid, &cid_str).await?;
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "application/octet-stream")
-        .body(Body::from(data))
-        .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)))
+    build_range_response(&headers, data, "application/octet-stream")
 }
 
 /// Archivist delete endpoint (DELETE /api/archivist/v1/data/:cid)
@@ -1962,21 +1958,24 @@ async fn fetch_cid_from_peers(
 
 async fn archivist_download(
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Path(cid_str): Path<String>,
-) -> Result<Vec<u8>, ApiError> {
+) -> Result<Response, ApiError> {
     info!("Archivist API: Downloading {}", cid_str);
 
     // Parse CID
-    let cid = cid_str
+    let cid: Cid = cid_str
         .parse()
         .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
 
-    // Try to get content from local store first.
-    match retrieve_local_cid_data(&state, &cid, &cid_str).await {
-        Ok(data) => Ok(data),
-        Err(ApiError::NotFound(_)) => fetch_cid_from_peers(&state, &cid, &cid_str).await,
-        Err(e) => Err(e),
-    }
+    // Try to get content from local store first, then peers.
+    let data = match retrieve_local_cid_data(&state, &cid, &cid_str).await {
+        Ok(data) => data,
+        Err(ApiError::NotFound(_)) => fetch_cid_from_peers(&state, &cid, &cid_str).await?,
+        Err(e) => return Err(e),
+    };
+
+    build_range_response(&headers, data, "application/octet-stream")
 }
 
 /// Peer ID endpoint (GET /api/archivist/v1/peer-id)
@@ -2052,6 +2051,55 @@ async fn spr_endpoint(State(state): State<ApiState>) -> Result<String, ApiError>
     );
 
     Ok(spr)
+}
+
+// --- HTTP Range request support (RFC 7233) ---
+
+/// Build a response with Range support. If a valid Range header is present,
+/// returns 206 Partial Content. Otherwise returns 200 with full body.
+/// Uses the existing `parse_range_header` which returns (start, end_exclusive).
+fn build_range_response(
+    headers: &HeaderMap,
+    data: Vec<u8>,
+    content_type: &str,
+) -> Result<Response, ApiError> {
+    let total = data.len();
+
+    let range_header = headers
+        .get("range")
+        .and_then(|v| v.to_str().ok());
+
+    if let Some(range_str) = range_header {
+        if let Some((start, end_exclusive)) = parse_range_header(range_str, total) {
+            let slice = data[start..end_exclusive].to_vec();
+            let end_inclusive = end_exclusive - 1;
+            let content_range = format!("bytes {}-{}/{}", start, end_inclusive, total);
+            return Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header("Content-Type", content_type)
+                .header("Content-Range", content_range)
+                .header("Content-Length", slice.len().to_string())
+                .header("Accept-Ranges", "bytes")
+                .body(Body::from(slice))
+                .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
+        } else {
+            // Invalid range
+            return Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header("Content-Range", format!("bytes */{}", total))
+                .body(Body::empty())
+                .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
+        }
+    }
+
+    // No Range header — full response
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", content_type)
+        .header("Content-Length", total.to_string())
+        .header("Accept-Ranges", "bytes")
+        .body(Body::from(data))
+        .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)))
 }
 
 // --- Directory manifest types and handlers (Archivist-compatible) ---
