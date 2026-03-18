@@ -8,12 +8,13 @@ import std/os
 import std/options
 import std/strutils
 
-import pkg/chronos
-import pkg/confutils/defs
-import pkg/libp2p
-import pkg/libp2p/routing_record
-import pkg/questionable
-import pkg/questionable/results
+import chronos
+import archivistdht/discv5/spr as discv5_spr
+import confutils/defs
+import libp2p
+import libp2p/routing_record
+import questionable
+import questionable/results
 
 import archivist/conf
 import archivist/archivist
@@ -38,8 +39,28 @@ proc unpinNode(nodePtr: pointer) =
       break
 
 proc parseBootstrapSprs(value: cstring): seq[SignedPeerRecord] =
-  discard value
-  @[]
+  if value.isNil:
+    return @[]
+
+  let raw = ($value).strip()
+  if raw.len == 0:
+    return @[]
+
+  for part in raw.split({'\n', ','}):
+    let uri = part.strip()
+    if uri.len == 0:
+      continue
+
+    var record: SignedPeerRecord
+    try:
+      if not record.fromURI(uri):
+        globalLastError = "Invalid bootstrap SPR uri: " & uri
+        return @[]
+    except CatchableError as exc:
+      globalLastError = "Invalid bootstrap SPR uri: " & uri & " (" & exc.msg & ")"
+      return @[]
+
+    result.add(record)
 
 proc buildNodeConfig(
     dataDir: string,
@@ -49,6 +70,7 @@ proc buildNodeConfig(
     listenPort: uint16,
     bootstrapNodes: seq[SignedPeerRecord],
 ): NodeConf =
+  let circuitDir = dataDir / "circuits"
   let maybeListenAddress = MultiAddress.init("/ip4/0.0.0.0/tcp/" & $listenPort)
   let listenAddrs =
     if maybeListenAddress.isOk:
@@ -80,8 +102,8 @@ proc buildNodeConfig(
     fsFsyncDir: true,
     storageQuota: DefaultQuotaBytes,
     overlayTtl: DefaultOverlayTtl.seconds,
-    blockMaintenanceInterval: DefaultBlockInterval,
-    blockMaintenanceNumberOfBlocks: DefaultNumBlocksPerInterval,
+    overlayMaintenanceInterval: DefaultBlockInterval,
+    overlayMaintenanceNumberOfBlocks: DefaultNumBlocksPerInterval,
     cacheSize: NBytes(0),
     logFile: none(string),
     persistence: false,
@@ -96,13 +118,13 @@ proc buildNodeConfig(
     marketplaceRequestCacheSize: DefaultRequestCacheSize,
     maxPriorityFeePerGas: DefaultMaxPriorityFeePerGas,
     prover: false,
-    circuitDir: OutDir(defaultCircuitDir()),
+    circuitDir: OutDir(circuitDir),
     proverBackend: ProverBackendCmd.nimgroth16,
     curve: Curves.bn128,
-    circomR1cs: InputFile(defaultCircuitDir() / "proof_main.r1cs"),
-    circomGraph: InputFile(defaultCircuitDir() / "proof_main.bin"),
-    circomWasm: InputFile(defaultCircuitDir() / "proof_main.wasm"),
-    circomZkey: InputFile(defaultCircuitDir() / "proof_main.zkey"),
+    circomR1cs: InputFile(circuitDir / "proof_main.r1cs"),
+    circomGraph: InputFile(circuitDir / "proof_main.bin"),
+    circomWasm: InputFile(circuitDir / "proof_main.wasm"),
+    circomZkey: InputFile(circuitDir / "proof_main.zkey"),
     circomNoZkey: false,
   )
 
@@ -141,7 +163,15 @@ proc archivist_ffi_start*(
       globalLastError = "Unable to initialize repo directory: " & (dataDir / "repo")
       return nil
 
+    globalLastError = ""
     let bootstrapNodes = parseBootstrapSprs(bootstrap_sprs)
+    let bootstrapRaw =
+      if bootstrap_sprs.isNil:
+        ""
+      else:
+        ($bootstrap_sprs).strip()
+    if bootstrapRaw.len > 0 and bootstrapNodes.len == 0 and globalLastError.len > 0:
+      return nil
     let config = buildNodeConfig(
       dataDir = dataDir,
       apiBindAddr = apiBindAddr,

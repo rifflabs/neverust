@@ -13,7 +13,7 @@ use tempfile::TempDir;
 use tower::util::ServiceExt;
 
 use libp2p::identity::Keypair;
-use neverust_core::{api, BlockStore, BoTgConfig, BoTgProtocol, Metrics};
+use neverust_core::{api, Block, BlockStore, BoTgConfig, BoTgProtocol, Discovery, Metrics};
 
 type FfiStart = unsafe extern "C" fn(
     data_dir: *const c_char,
@@ -158,6 +158,10 @@ struct EmbeddedArchivistNode {
 
 impl EmbeddedArchivistNode {
     fn start() -> Result<Self, String> {
+        Self::start_with_bootstrap("")
+    }
+
+    fn start_with_bootstrap(bootstrap_sprs: &str) -> Result<Self, String> {
         let lib_path = compile_archivist_ffi_shim()?;
         let api_port = free_tcp_port();
         let disc_port = free_udp_port();
@@ -168,6 +172,7 @@ impl EmbeddedArchivistNode {
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let data_dir_path = data_dir.path().to_path_buf();
+        let bootstrap_sprs = bootstrap_sprs.to_string();
 
         let join_handle = thread::spawn(move || -> Result<(), String> {
             // SAFETY: Symbol loading and calls use known signatures from our shim.
@@ -208,8 +213,8 @@ impl EmbeddedArchivistNode {
                 .map_err(|e| format!("invalid data dir CString: {}", e))?;
                 let bindaddr_c =
                     CString::new("127.0.0.1").map_err(|e| format!("bindaddr CString: {}", e))?;
-                let bootstrap_c =
-                    CString::new("").map_err(|e| format!("bootstrap CString: {}", e))?;
+                let bootstrap_c = CString::new(bootstrap_sprs.as_bytes())
+                    .map_err(|e| format!("bootstrap CString: {}", e))?;
 
                 let node_ptr = start(
                     data_dir_c.as_ptr(),
@@ -295,6 +300,44 @@ impl EmbeddedArchivistNode {
                     tokio::time::sleep(Duration::from_millis(150)).await;
                 }
             }
+        }
+    }
+
+    async fn wait_spr_ready(&self) -> Result<String, String> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .map_err(|e| format!("failed to build spr readiness client: {}", e))?;
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let url = format!("{}/spr", self.api_base_url());
+        loop {
+            match client
+                .get(&url)
+                .header("accept", "text/plain")
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    let body = resp
+                        .text()
+                        .await
+                        .map_err(|e| format!("failed to read SPR response body: {}", e))?;
+                    let spr = body.trim().to_string();
+                    if spr.starts_with("spr:") {
+                        return Ok(spr);
+                    }
+                }
+                _ => {}
+            }
+
+            if Instant::now() > deadline {
+                return Err(format!(
+                    "embedded Archivist SPR endpoint did not become ready at {}",
+                    url
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
         }
     }
 
@@ -427,5 +470,94 @@ async fn ffi_embedded_archivist_upload_then_neverust_retrieve() {
         .expect("downloaded bytes");
     assert_eq!(downloaded.as_ref(), payload.as_slice());
 
+    archivist.stop().expect("stop embedded Archivist");
+}
+
+fn reserve_udp_port_owned() -> (u16, UdpSocket) {
+    let socket = UdpSocket::bind(("127.0.0.1", 0)).expect("bind owned udp port");
+    let port = socket
+        .local_addr()
+        .expect("read owned udp addr")
+        .port();
+    (port, socket)
+}
+
+#[tokio::test]
+#[ignore]
+async fn ffi_embedded_archivist_discv5_provide_roundtrip() {
+    let archivist = EmbeddedArchivistNode::start().expect("start embedded Archivist");
+    archivist
+        .wait_ready()
+        .await
+        .expect("embedded Archivist API ready");
+    let archivist_spr = archivist
+        .wait_spr_ready()
+        .await
+        .expect("embedded Archivist SPR ready");
+
+    let (port1, socket1) = reserve_udp_port_owned();
+    let (port2, socket2) = reserve_udp_port_owned();
+
+    let key1 = Keypair::generate_secp256k1();
+    let key2 = Keypair::generate_secp256k1();
+
+    drop(socket1);
+    drop(socket2);
+
+    let disc1 = Arc::new(
+        Discovery::new(
+            &key1,
+            format!("127.0.0.1:{port1}")
+                .parse()
+                .expect("socket addr 1"),
+            vec!["/ip4/127.0.0.1/tcp/28070".to_string()],
+            vec![archivist_spr.clone()],
+        )
+        .await
+        .expect("create discovery 1"),
+    );
+    let disc2 = Arc::new(
+        Discovery::new(
+            &key2,
+            format!("127.0.0.1:{port2}")
+                .parse()
+                .expect("socket addr 2"),
+            vec!["/ip4/127.0.0.1/tcp/28071".to_string()],
+            vec![archivist_spr],
+        )
+        .await
+        .expect("create discovery 2"),
+    );
+
+    let run1 = tokio::spawn(disc1.clone().run());
+    let run2 = tokio::spawn(disc2.clone().run());
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let cid = Block::new_sha256(b"ffi-archivist-discv5-provide-proof".to_vec())
+        .expect("create test block")
+        .cid;
+
+    disc1.provide(&cid).await.expect("provide cid");
+
+    let providers = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match disc2.find(&cid).await {
+                Ok(providers) if !providers.is_empty() => return providers,
+                _ => tokio::time::sleep(Duration::from_millis(500)).await,
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for embedded Archivist providers");
+
+    assert!(
+        !providers.is_empty(),
+        "embedded Archivist did not return any provider records for CID {}",
+        cid
+    );
+
+    run1.abort();
+    run2.abort();
     archivist.stop().expect("stop embedded Archivist");
 }
