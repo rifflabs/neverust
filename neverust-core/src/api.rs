@@ -2080,6 +2080,7 @@ fn build_range_response(
                 .header("Content-Range", content_range)
                 .header("Content-Length", slice.len().to_string())
                 .header("Accept-Ranges", "bytes")
+                .header("Cache-Control", "public, max-age=31536000, immutable")
                 .body(Body::from(slice))
                 .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
         } else {
@@ -2098,6 +2099,7 @@ fn build_range_response(
         .header("Content-Type", content_type)
         .header("Content-Length", total.to_string())
         .header("Accept-Ranges", "bytes")
+        .header("Cache-Control", "public, max-age=31536000, immutable") // CID content is immutable
         .body(Body::from(data))
         .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)))
 }
