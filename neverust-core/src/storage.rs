@@ -322,6 +322,45 @@ impl BlockStore {
         }
     }
 
+    /// Read a byte range from a block without loading the full block.
+    /// Only supported on GeomTree backend (falls back to full read on others).
+    /// Returns (data, total_size).
+    pub async fn get_range(
+        &self,
+        cid: &Cid,
+        start: u64,
+        len: u64,
+    ) -> Result<(Vec<u8>, u64), StorageError> {
+        match &self.backend {
+            StoreBackend::GeomTree(tree) => tree.get_range(cid, start, len).await,
+            // Fallback: load full block and slice
+            _ => {
+                let block = self.get(cid).await?;
+                let total = block.data.len() as u64;
+                let s = start as usize;
+                let e = (start + len).min(total) as usize;
+                let slice = if s < block.data.len() {
+                    block.data[s..e].to_vec()
+                } else {
+                    Vec::new()
+                };
+                Ok((slice, total))
+            }
+        }
+    }
+
+    /// Get total size of a block without reading its data.
+    /// Only supported on GeomTree (falls back to full read on others).
+    pub async fn block_size(&self, cid: &Cid) -> Result<u64, StorageError> {
+        match &self.backend {
+            StoreBackend::GeomTree(tree) => tree.file_size(cid).await,
+            _ => {
+                let block = self.get(cid).await?;
+                Ok(block.data.len() as u64)
+            }
+        }
+    }
+
     /// Check if a block exists.
     pub async fn has(&self, cid: &Cid) -> bool {
         match &self.backend {
@@ -2509,6 +2548,59 @@ impl GeomTreeStore {
                 cid: cid_copy,
                 data,
             })
+        })
+        .await
+        .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))?
+    }
+
+    /// Read a byte range from a block file without loading the entire file.
+    /// Returns (data, total_file_size).
+    async fn get_range(
+        &self,
+        cid: &Cid,
+        start: u64,
+        len: u64,
+    ) -> Result<(Vec<u8>, u64), StorageError> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let path = self.block_path(cid);
+        let cid_copy = *cid;
+        tokio::task::spawn_blocking(move || {
+            let mut file = fs::File::open(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    StorageError::BlockNotFound(cid_copy.to_string())
+                } else {
+                    StorageError::IoError(e)
+                }
+            })?;
+
+            let total_size = file.metadata().map_err(StorageError::IoError)?.len();
+            file.seek(SeekFrom::Start(start))
+                .map_err(StorageError::IoError)?;
+
+            let to_read = len.min(total_size.saturating_sub(start)) as usize;
+            let mut buf = vec![0u8; to_read];
+            file.read_exact(&mut buf).map_err(StorageError::IoError)?;
+
+            Ok((buf, total_size))
+        })
+        .await
+        .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))?
+    }
+
+    /// Get total file size without reading the data.
+    async fn file_size(&self, cid: &Cid) -> Result<u64, StorageError> {
+        let path = self.block_path(cid);
+        let cid_copy = *cid;
+        tokio::task::spawn_blocking(move || {
+            let meta = fs::metadata(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    StorageError::BlockNotFound(cid_copy.to_string())
+                } else {
+                    StorageError::IoError(e)
+                }
+            })?;
+            Ok(meta.len())
         })
         .await
         .map_err(|e| StorageError::IoError(std::io::Error::other(e.to_string())))?

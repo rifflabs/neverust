@@ -1100,6 +1100,96 @@ async fn retrieve_local_cid_data(
     }
 }
 
+/// Retrieve a byte range from a manifest's data blocks.
+///
+/// Only reads the blocks that overlap with [range_start, range_end) (end exclusive).
+/// This avoids loading the entire file for Range requests.
+async fn retrieve_manifest_range(
+    state: &ApiState,
+    manifest: &Manifest,
+    block_cids: &[Cid],
+    range_start: usize,
+    range_end: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let block_size = manifest.block_size as usize;
+    let first_block = range_start / block_size;
+    let last_block = (range_end - 1) / block_size; // inclusive
+
+    let mut data = Vec::with_capacity(range_end - range_start);
+
+    for idx in first_block..=last_block.min(block_cids.len() - 1) {
+        let block_data = state
+            .block_store
+            .get(&block_cids[idx])
+            .await
+            .map_err(|e| match e {
+                StorageError::BlockNotFound(_) => {
+                    ApiError::NotFound(format!("manifest block {} not found", block_cids[idx]))
+                }
+                _ => ApiError::Internal(format!(
+                    "Failed to fetch block {}: {}",
+                    block_cids[idx], e
+                )),
+            })?;
+
+        let block_start_byte = idx * block_size;
+        let slice_start = if idx == first_block {
+            range_start - block_start_byte
+        } else {
+            0
+        };
+        let slice_end = if idx == last_block {
+            (range_end - block_start_byte).min(block_data.data.len())
+        } else {
+            block_data.data.len()
+        };
+
+        data.extend_from_slice(&block_data.data[slice_start..slice_end]);
+    }
+
+    Ok(data)
+}
+
+/// Load manifest metadata (manifest + block CID list) without loading content blocks.
+async fn load_manifest_metadata(
+    state: &ApiState,
+    cid: &Cid,
+    cid_str: &str,
+) -> Result<(Manifest, Vec<Cid>), ApiError> {
+    let block = state.block_store.get(cid).await.map_err(|e| match e {
+        StorageError::BlockNotFound(_) => ApiError::NotFound(cid_str.to_string()),
+        _ => ApiError::Internal(format!("Failed to retrieve block: {}", e)),
+    })?;
+
+    let manifest = Manifest::from_block(&block)
+        .map_err(|e| ApiError::Internal(format!("Failed to decode manifest: {}", e)))?;
+
+    let metadata_cid = metadata_cid_from_manifest(&manifest).ok_or_else(|| {
+        ApiError::Internal("Manifest missing metadata CID in filename field".to_string())
+    })?;
+
+    let tree_metadata_block = state
+        .block_store
+        .get(&metadata_cid)
+        .await
+        .map_err(|e| match e {
+            StorageError::BlockNotFound(_) => {
+                ApiError::NotFound(format!("metadata for manifest {} not found", cid_str))
+            }
+            _ => ApiError::Internal(format!(
+                "Failed to fetch tree metadata {}: {}",
+                metadata_cid, e
+            )),
+        })?;
+
+    let block_cids =
+        ArchivistTree::deserialize_block_list(&tree_metadata_block.data).map_err(|e| {
+            ApiError::Internal(format!("Failed to deserialize tree metadata: {}", e))
+        })?;
+
+    Ok((manifest, block_cids))
+}
+
 /// Archivist list data endpoint (GET /api/archivist/v1/data)
 async fn archivist_list_data(State(state): State<ApiState>) -> impl IntoResponse {
     let mut content = Vec::new();
@@ -1189,7 +1279,45 @@ async fn archivist_download_local(
             .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
     }
 
-    // Regular file — stream it with Range support
+    // Regular file — serve with Range support
+    // For manifests, use block-level Range serving to avoid loading the entire file
+    if cid.codec() == 0xcd01 {
+        let (manifest, block_cids) = load_manifest_metadata(&state, &cid, &cid_str).await?;
+        let total_size = manifest.dataset_size as usize;
+
+        let range_header = headers.get("range").and_then(|v| v.to_str().ok());
+
+        if let Some(range_str) = range_header {
+            if let Some((start, end_exclusive)) = parse_range_header(range_str, total_size) {
+                // Only read the blocks we need
+                let data = retrieve_manifest_range(
+                    &state, &manifest, &block_cids, start, end_exclusive,
+                ).await?;
+                let end_inclusive = end_exclusive - 1;
+                return Response::builder()
+                    .status(StatusCode::PARTIAL_CONTENT)
+                    .header("Content-Type", "application/octet-stream")
+                    .header("Content-Range", format!("bytes {}-{}/{}", start, end_inclusive, total_size))
+                    .header("Content-Length", data.len().to_string())
+                    .header("Accept-Ranges", "bytes")
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .body(Body::from(data))
+                    .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
+            } else {
+                return Response::builder()
+                    .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header("Content-Range", format!("bytes */{}", total_size))
+                    .body(Body::empty())
+                    .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
+            }
+        }
+
+        // No Range header — full file (still needs all blocks)
+        let data = retrieve_local_cid_data(&state, &cid, &cid_str).await?;
+        return build_range_response(&headers, data, "application/octet-stream");
+    }
+
+    // Non-manifest block — direct file read with Range support
     let data = retrieve_local_cid_data(&state, &cid, &cid_str).await?;
     build_range_response(&headers, data, "application/octet-stream")
 }
@@ -1968,7 +2096,33 @@ async fn archivist_download(
         .parse()
         .map_err(|e| ApiError::BadRequest(format!("Invalid CID: {}", e)))?;
 
-    // Try to get content from local store first, then peers.
+    // For manifests with Range headers, use block-level Range serving
+    if cid.codec() == 0xcd01 {
+        if let Ok((manifest, block_cids)) = load_manifest_metadata(&state, &cid, &cid_str).await {
+            let total_size = manifest.dataset_size as usize;
+
+            let range_header = headers.get("range").and_then(|v| v.to_str().ok());
+            if let Some(range_str) = range_header {
+                if let Some((start, end_exclusive)) = parse_range_header(range_str, total_size) {
+                    let data = retrieve_manifest_range(
+                        &state, &manifest, &block_cids, start, end_exclusive,
+                    ).await?;
+                    let end_inclusive = end_exclusive - 1;
+                    return Response::builder()
+                        .status(StatusCode::PARTIAL_CONTENT)
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Content-Range", format!("bytes {}-{}/{}", start, end_inclusive, total_size))
+                        .header("Content-Length", data.len().to_string())
+                        .header("Accept-Ranges", "bytes")
+                        .header("Cache-Control", "public, max-age=31536000, immutable")
+                        .body(Body::from(data))
+                        .map_err(|e| ApiError::Internal(format!("Response build error: {}", e)));
+                }
+            }
+        }
+    }
+
+    // Full content — try local, then peers
     let data = match retrieve_local_cid_data(&state, &cid, &cid_str).await {
         Ok(data) => data,
         Err(ApiError::NotFound(_)) => fetch_cid_from_peers(&state, &cid, &cid_str).await?,
